@@ -43,6 +43,20 @@ With dependencies installed, run `npm run extension:build`, then load `extension
 
 See [extension/README.md](extension/README.md) for installation, permissions, limitations, and verification commands. Managed browsers may require administrator approval to install an unpacked extension.
 
+## Interactive learning and revisions
+
+In the full viewer, select a concept tag. The visualization controls offer **Animation**, **Step by Step**, **Formula**, **3D Model**, **Plot**, and **Source**. Choose a format and click **Generate**. In manual mode, selecting an ungenerated tag no longer starts a request before you choose its format; automatic generation remains available in Settings.
+
+- **Animation** is a live Canvas render, not a GIF. Pause, resume, restart, or change its playback speed.
+- **Step by Step** generates a worked example with a diagram, variables, and highlighted pseudocode. Use previous/next, the timeline slider, or playback to inspect each state. Click a diagram item to inspect its value. These are generated snapshots, not a general-purpose algorithm interpreter; request different inputs or examples through feedback.
+- **Discuss and revise visualization** opens a per-concept feedback panel. For example: "The formula should multiply by velocity", "Show the allocation one block at a time", or "The 3D structure is missing a layer". The next request includes the current render, recent applied feedback, and source-page context.
+- The current result stays visible while a revision runs. A failed revision preserves it. Feedback and results survive reloads; **Undo last revision** restores a saved version without another AI call. Up to five prior renders and twenty feedback entries are retained per concept.
+- Narrow screens provide **Document** and **Study** views instead of squeezing both panes side by side. The Edge/Chrome sidebar's **Open interactive viewer** button opens this experience.
+
+Generation and revisions use the selected provider and consume its allowance. Structural and code-syntax validation cannot guarantee factual or mathematical correctness; check the source and use feedback to correct mistakes. Ordinary document Chat remains separate from the visualization feedback panel.
+
+Checks: `npm run test:viz-edit` covers lesson structure, prompt context, camera fitting, revision persistence, undo, and conflicts. `npm run test:viz-browser` uses a synthetic provider to exercise playback, feedback, failure preservation, reloads, and desktop/mobile Canvas and 3D output. To exercise the same workflow through the Copilot fixture, run `node scripts/test-extension-browser.mjs --copilot --viz` after building the extension.
+
 ## GitHub Copilot
 
 GitHub Copilot is available as a model engine for the browser app and its extension. No Codex account, custom API endpoint, or OpenAI API key is required for this option.

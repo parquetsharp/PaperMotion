@@ -36,7 +36,7 @@ export async function checkVisualizations({ context, origin, docId, dataDirector
   await revision.getByLabel("Visualization format").selectOption("2d-anim");
   await revision.getByRole("button", { name: "Generate", exact: true }).click();
   await expect(viewer.getByRole("button", { name: "Pause animation" })).toBeVisible();
-  const animation = viewer.locator('canvas').last();
+  const animation = viewer.getByRole("img", { name: "Animated visualization", exact: true });
   const hash = async () => createHash("sha256").update(await animation.screenshot()).digest("hex");
   const initial = await hash();
   await expect.poll(hash).not.toBe(initial);
@@ -86,8 +86,9 @@ export async function checkVisualizations({ context, origin, docId, dataDirector
   await revision.getByRole("button", { name: "Discuss and revise visualization" }).click();
   await revision.getByLabel("Visualization format").selectOption("3d");
   await revision.getByRole("button", { name: "Generate", exact: true }).click();
-  await expect(viewer.locator('canvas').last()).toBeVisible();
-  const scene = viewer.locator('canvas').last();
+  const scene = viewer.getByRole("img", { name: "3D visualization", exact: true });
+  await expect(scene).toBeVisible();
+  await expect(revision.getByRole("button", { name: "Generate", exact: true })).toBeEnabled();
   const pixelStats = await sharp(await scene.screenshot()).stats();
   assert.ok(pixelStats.channels.some(channel => channel.stdev > 10), "3D canvas contains visible geometry.");
   await viewer.screenshot({ path: path.join(output, "3d-desktop.png") });
@@ -95,8 +96,20 @@ export async function checkVisualizations({ context, origin, docId, dataDirector
   await viewer.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
   await viewer.mouse.down(); await viewer.mouse.move(bounds.x + bounds.width / 2 + 60, bounds.y + bounds.height / 2 + 20, { steps: 5 }); await viewer.mouse.up();
   await viewer.setViewportSize({ width: 390, height: 900 });
-  const mobileCanvasStats = await sharp(await scene.screenshot()).stats();
+  await viewer.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await viewer.screenshot({ path: path.join(output, "3d-mobile.png"), fullPage: true });
+  const mobileCanvas = await scene.screenshot();
+  const mobileCanvasStats = await sharp(mobileCanvas).stats();
   assert.ok(mobileCanvasStats.channels.some(channel => channel.stdev > 10), "Mobile 3D canvas is nonblank.");
+  const dimensions = await sharp(mobileCanvas).metadata();
+  for (const left of [0, dimensions.width - 4]) {
+    const { data: pixels, info } = await sharp(mobileCanvas).extract({ left, top: 0, width: 4, height: dimensions.height }).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+    let geometryPixels = 0;
+    for (let offset = 0; offset < pixels.length; offset += info.channels) {
+      if (pixels[offset + 2] > pixels[offset] + 30 && pixels[offset + 1] > pixels[offset] + 30) geometryPixels++;
+    }
+    assert.equal(geometryPixels, 0, "Blue fixture geometry stays within the frame on mobile.");
+  }
   await viewer.screenshot({ path: path.join(output, "3d-mobile.png"), fullPage: true });
   await revision.getByLabel("Visualization format").selectOption("interactive");
   await revision.getByRole("button", { name: "Generate", exact: true }).click();

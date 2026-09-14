@@ -7,6 +7,7 @@ import { editVisualization, VizEditError } from "../lib/viz-edit";
 import type { PersistedTagsFile } from "../lib/tags-store";
 import type { VizSpec } from "../lib/schemas";
 import { beginVizEdit } from "../lib/viz-edit-lock";
+import { fitSceneDistance } from "../lib/viz-framing";
 
 const step = {
   title: "Compare values", explanation: "Compare the current value with the next value.", line: 1,
@@ -15,6 +16,14 @@ const step = {
   links: [{ from: "left", to: "right", label: "compare" }],
 };
 const lesson = { type: "interactive", title: "Compare and swap", caption: "Follow the values through a comparison.", code: ["compare(values[index], values[index + 1])"], steps: [step, { ...step, title: "Swap values" }] };
+
+test("3D camera fitting accounts for the narrower horizontal field of view", () => {
+  const desktop = fitSceneDistance(1, 50, 1.4);
+  const mobile = fitSceneDistance(1, 50, 0.5);
+  assert.ok(mobile > desktop);
+  const horizontal = Math.atan(Math.tan(50 * Math.PI / 360) * 0.5);
+  assert.ok(mobile * Math.sin(horizontal) > 1);
+});
 
 test("interactive lessons validate structured diagram and code references", () => {
   assert.equal(validateInteractiveSpec(lesson).steps.length, 2);

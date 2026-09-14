@@ -115,7 +115,7 @@ export default function TwoDAnimView({ spec, onRuntimeError }: Props) {
         <select aria-label="Animation speed" value={speed} onChange={event => { const next = Number(event.target.value); playback.current.speed = next; setSpeed(next); }} className="rounded border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-2 py-1 text-xs"><option value={0.5}>0.5x</option><option value={1}>1x</option><option value={2}>2x</option></select>
       </div>
     <div ref={containerRef} className="relative min-h-0 flex-1 w-full">
-      <canvas ref={canvasRef} className="h-full w-full" />
+      <canvas ref={canvasRef} role="img" aria-label="Animated visualization" className="h-full w-full" />
       {error && (
         <div className="absolute bottom-3 left-3 right-3 rounded-md border border-[var(--feedback-wrong-border)] bg-[var(--feedback-wrong-bg)] px-3 py-2 text-xs text-[var(--feedback-wrong-text)]">
           {error}
