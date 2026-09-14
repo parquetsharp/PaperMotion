@@ -38,6 +38,9 @@ import TwoDAnimView from "@/components/Visualizer/TwoDAnimView";
 import TwoDTextView from "@/components/Visualizer/TwoDTextView";
 import FormulaView from "@/components/Visualizer/FormulaView";
 import GraphView from "@/components/Visualizer/GraphView";
+import InteractiveView from "@/components/Visualizer/InteractiveView";
+import RevisionPanel from "@/components/Visualizer/RevisionPanel";
+import type { PersistedTagServer } from "@/lib/tags-store";
 import VizLegendIcon from "@/components/Visualizer/VizLegendIcon";
 import {
   VIZ_LEGEND_ORDER,
@@ -110,6 +113,8 @@ type Props = {
   providerLabel?: string;
   // Visualizer-only props (forwarded as-is from the orchestrator)
   visualizer: {
+    tag?: PersistedTagServer;
+    onUpdate?: (tag: PersistedTagServer) => void;
     spec: VizSpec | null;
     loading: boolean;
     emptyHint?: string;
@@ -136,6 +141,7 @@ export default function RightPane({ docId, mode, onModeChange, visualizer, provi
       <div className="relative min-h-0 flex-1 bg-[var(--surface-raised)]">
         {mode === "visualizer" && (
           <VisualizerBody
+            key={visualizer.tag?.id}
             spec={visualizer.spec}
             loading={visualizer.loading}
             emptyHint={visualizer.emptyHint}
@@ -189,6 +195,7 @@ export default function RightPane({ docId, mode, onModeChange, visualizer, provi
           )}
         </div>
       )}
+      {mode === "visualizer" && visualizer.tag && visualizer.onUpdate && <RevisionPanel key={visualizer.tag.id} docId={docId} tag={visualizer.tag} onUpdate={visualizer.onUpdate} />}
     </div>
   );
 }
@@ -497,7 +504,8 @@ function VisualizerBody({
           transition={{ duration: 0.2 }}
           className="absolute inset-0"
         >
-          {spec.type === "3d" && <ThreeDView spec={spec} onRuntimeError={onRuntimeError} />}
+              {spec.type === "interactive" && <InteractiveView key={JSON.stringify(spec)} spec={spec} />}
+              {spec.type === "3d" && <ThreeDView spec={spec} onRuntimeError={onRuntimeError} />}
           {spec.type === "2d-anim" && <TwoDAnimView spec={spec} onRuntimeError={onRuntimeError} />}
           {spec.type === "2d-text" && <TwoDTextView spec={spec} />}
           {spec.type === "formula" && <FormulaView spec={spec} />}

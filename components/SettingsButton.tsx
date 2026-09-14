@@ -22,6 +22,8 @@ import { APP_VERSION } from "@/lib/version";
 import type { ProviderName } from "@/lib/provider-types";
 
 export type SettingsPayload = {
+  copilotModelFast?: string;
+  copilotModelSmart?: string;
   autoGenerate: boolean;
   maxRetries: number;
   provider: ProviderName;
@@ -52,6 +54,7 @@ export type SettingsPayload = {
 export const SETTINGS_EVENT = "getit:settings";
 
 const ENGINE_LABEL: Record<ProviderName, string> = {
+  copilot: "GitHub Copilot",
   codex: "OpenAI — Codex CLI",
   gemini: "Google — Gemini (API key)",
   claude: "Anthropic — Claude Code",
@@ -163,7 +166,7 @@ export default function SettingsButton() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
             transition={{ duration: 0.12 }}
-            className="absolute right-0 top-full z-30 mt-1.5 w-[22rem] overflow-hidden rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-raised)] shadow-[var(--shadow-popover)]"
+            className="absolute right-0 top-full z-30 mt-1.5 max-h-[calc(100dvh-80px)] w-[22rem] max-w-[calc(100vw-64px)] overflow-y-auto rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-raised)] shadow-[var(--shadow-popover)]"
           >
             <SettingsPanel refreshKey={open ? "open" : "closed"} />
           </motion.div>
@@ -175,6 +178,7 @@ export default function SettingsButton() {
 
 function SettingsPanel({ refreshKey }: { refreshKey: string }) {
   const [provider, setProvider] = useState<ProviderName>("codex");
+  const [copilotModels, setCopilotModels] = useState({ copilotModelFast: "auto", copilotModelSmart: "auto" });
   const [autoGenerate, setAutoGenerate] = useState<boolean>(AUTO_GENERATE_VIZ);
   const [maxRetries, setMaxRetries] = useState<number>(MAX_VIZ_GEN_RETRIES);
 
@@ -230,6 +234,7 @@ function SettingsPanel({ refreshKey }: { refreshKey: string }) {
         if (typeof s.autoGenerate === "boolean") setAutoGenerate(s.autoGenerate);
         if (typeof s.maxRetries === "number") setMaxRetries(s.maxRetries);
         if (s.provider) setProvider(s.provider);
+        setCopilotModels({ copilotModelFast: s.copilotModelFast ?? "auto", copilotModelSmart: s.copilotModelSmart ?? "auto" });
         if (typeof s.codexModelFast === "string") setCodexModelFast(s.codexModelFast);
         if (typeof s.codexModelSmart === "string") setCodexModelSmart(s.codexModelSmart);
         if (typeof s.codexEffortFast === "string") setCodexEffortFast(s.codexEffortFast);
@@ -351,18 +356,18 @@ function SettingsPanel({ refreshKey }: { refreshKey: string }) {
     });
   }, [piUrl, piApiType, piModelFast, piModelSmart, persist]);
 
-  const textStateRef = useRef({ piUrl, piApiKey, piModelFast, piModelSmart, codexModelFast, codexModelSmart, codexEffortFast, codexEffortSmart, geminiApiKey, geminiModelFast, geminiModelSmart, claudeModelFast, claudeModelSmart, claudeEffortFast, claudeEffortSmart });
+  const textStateRef = useRef({ ...copilotModels, piUrl, piApiKey, piModelFast, piModelSmart, codexModelFast, codexModelSmart, codexEffortFast, codexEffortSmart, geminiApiKey, geminiModelFast, geminiModelSmart, claudeModelFast, claudeModelSmart, claudeEffortFast, claudeEffortSmart });
   useEffect(() => {
-    textStateRef.current = { piUrl, piApiKey, piModelFast, piModelSmart, codexModelFast, codexModelSmart, codexEffortFast, codexEffortSmart, geminiApiKey, geminiModelFast, geminiModelSmart, claudeModelFast, claudeModelSmart, claudeEffortFast, claudeEffortSmart };
-  }, [piUrl, piApiKey, piModelFast, piModelSmart, codexModelFast, codexModelSmart, codexEffortFast, codexEffortSmart, geminiApiKey, geminiModelFast, geminiModelSmart, claudeModelFast, claudeModelSmart, claudeEffortFast, claudeEffortSmart]);
+    textStateRef.current = { ...copilotModels, piUrl, piApiKey, piModelFast, piModelSmart, codexModelFast, codexModelSmart, codexEffortFast, codexEffortSmart, geminiApiKey, geminiModelFast, geminiModelSmart, claudeModelFast, claudeModelSmart, claudeEffortFast, claudeEffortSmart };
+  }, [copilotModels, piUrl, piApiKey, piModelFast, piModelSmart, codexModelFast, codexModelSmart, codexEffortFast, codexEffortSmart, geminiApiKey, geminiModelFast, geminiModelSmart, claudeModelFast, claudeModelSmart, claudeEffortFast, claudeEffortSmart]);
 
   useEffect(() => {
     if (!hydratedRef.current) return;
     const timer = setTimeout(() => {
-      persist({ piUrl, piApiKey, piModelFast, piModelSmart, codexModelFast, codexModelSmart, codexEffortFast, codexEffortSmart, geminiApiKey, geminiModelFast, geminiModelSmart, claudeModelFast, claudeModelSmart, claudeEffortFast, claudeEffortSmart });
+      persist({ ...copilotModels, piUrl, piApiKey, piModelFast, piModelSmart, codexModelFast, codexModelSmart, codexEffortFast, codexEffortSmart, geminiApiKey, geminiModelFast, geminiModelSmart, claudeModelFast, claudeModelSmart, claudeEffortFast, claudeEffortSmart });
     }, 500);
     return () => clearTimeout(timer);
-  }, [piUrl, piApiKey, piModelFast, piModelSmart, codexModelFast, codexModelSmart, codexEffortFast, codexEffortSmart, geminiApiKey, geminiModelFast, geminiModelSmart, claudeModelFast, claudeModelSmart, claudeEffortFast, claudeEffortSmart, persist]);
+  }, [copilotModels, piUrl, piApiKey, piModelFast, piModelSmart, codexModelFast, codexModelSmart, codexEffortFast, codexEffortSmart, geminiApiKey, geminiModelFast, geminiModelSmart, claudeModelFast, claudeModelSmart, claudeEffortFast, claudeEffortSmart, persist]);
 
   useEffect(() => {
     return () => {
@@ -418,23 +423,28 @@ function SettingsPanel({ refreshKey }: { refreshKey: string }) {
       </div>
 
       <div className="px-3 py-2 border-b border-[var(--border-subtle)]">
-        <label className="block text-[12.5px] font-medium text-[var(--ink-900)] mb-2">Model Engine</label>
-        {/* Switching engines goes through the setup wizard only — it installs/
-            authenticates the new backend and verifies it works before applying.
-            A free-floating dropdown here would bypass that and leave a broken
-            provider selected, so we show the current engine + a guided Switch. */}
-        <div className="flex items-center justify-between gap-2 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-2.5 py-1.5">
-          <span className="text-[12px] font-medium text-[var(--ink-900)]">{ENGINE_LABEL[provider]}</span>
-          <button
-            type="button"
-            onClick={() => window.getit?.runCodexSetup?.().catch(() => {})}
-            className="inline-flex items-center gap-1 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-2 py-1 text-[10.5px] font-medium text-[var(--ink-700)] transition hover:border-[var(--accent-300)] hover:text-[var(--accent-700)]"
-          >
-            <Settings2 className="h-2.5 w-2.5" />
-            Switch
-          </button>
-        </div>
+        <label htmlFor="model-engine" className="block text-[12.5px] font-medium text-[var(--ink-900)] mb-2">Model Engine</label>
+        <select id="model-engine" value={provider} onChange={event => {
+          const next = event.target.value as ProviderName;
+          setProvider(next);
+          persist({ provider: next });
+        }} className="w-full rounded-md border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-2.5 py-1.5 text-[12px] text-[var(--ink-900)]">
+          {Object.entries(ENGINE_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </select>
       </div>
+
+      {provider === "copilot" && (
+        <div className="space-y-3 border-b border-[var(--border-subtle)] bg-[var(--surface-sunken)] px-3 py-2.5">
+          <p className="text-[11.5px] text-[var(--ink-500)]">CLI authentication: <code>copilot login</code></p>
+          {(["copilotModelFast", "copilotModelSmart"] as const).map((field, index) => (
+            <div key={field}>
+              <label htmlFor={field} className="mb-1 block text-[11.5px] font-medium text-[var(--ink-900)]">{index === 0 ? "Generation model" : "Conversation model"}</label>
+              <input id={field} value={copilotModels[field]} onChange={event => setCopilotModels({ ...copilotModels, [field]: event.target.value })} placeholder="auto" className="w-full rounded-md border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-2 py-1.5 text-[12px] text-[var(--ink-900)]" />
+            </div>
+          ))}
+          <a href="https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/install-copilot-cli" target="_blank" rel="noopener noreferrer" className="text-[11.5px] text-[var(--accent-700)]">Copilot CLI setup and account requirements</a>
+        </div>
+      )}
 
       {provider === "gemini" && (
         <div className="px-3 py-2.5 border-b border-[var(--border-subtle)] bg-[var(--surface-sunken)] space-y-3">

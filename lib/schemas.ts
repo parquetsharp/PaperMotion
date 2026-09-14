@@ -5,7 +5,10 @@
  */
 
 export const VIZ_TYPES = ["3d", "2d-anim", "2d-text", "formula", "graph"] as const;
-export type VizType = (typeof VIZ_TYPES)[number];
+export type VizType = (typeof VIZ_TYPES)[number] | "interactive";
+
+import { interactiveJsonSchema, type InteractiveSpec } from "./interactive-viz";
+export type { InteractiveSpec } from "./interactive-viz";
 
 // ── Tag detection (per-page) ───────────────────────────────────────────
 
@@ -150,13 +153,15 @@ export type GraphSpec = {
   data_json: string;
 };
 
-export type VizSpec = ThreeDSpec | TwoDAnimSpec | TwoDTextSpec | FormulaSpec | GraphSpec;
+export type VizSpec = ThreeDSpec | TwoDAnimSpec | TwoDTextSpec | FormulaSpec | GraphSpec | InteractiveSpec;
 
 // We use a *separate* per-type schema, because codex only invokes one schema
 // per call and a discriminated union with conditional `required` properties is
 // brittle in JSON Schema strict mode.
 export function vizSchemaFor(type: VizType): object {
   switch (type) {
+    case "interactive":
+      return interactiveJsonSchema();
     case "3d":
       return {
         type: "object",

@@ -57,3 +57,5 @@ pr2.patch
 
 scratch/
 /data/
+/extension/build/
+/scripts/extension-out/

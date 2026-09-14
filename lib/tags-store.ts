@@ -31,6 +31,9 @@ export type PersistedTagServer = {
   error?: string;
   attempts?: number;
   lastRuntimeError?: string;
+  revision?: number;
+  feedback?: Array<{ id: string; message: string; reply: string; status: "applied" | "failed"; at: number }>;
+  versions?: Array<{ spec: VizSpec; at: number }>;
 };
 
 export type PersistedTagsFile = {

@@ -22,7 +22,9 @@ import { AUTO_GENERATE_VIZ, MAX_VIZ_GEN_RETRIES } from "./config";
 export type AppSettings = {
   autoGenerate: boolean;
   maxRetries: number;
-  provider: "codex" | "gemini" | "claude" | "pi";
+  provider: "codex" | "gemini" | "claude" | "pi" | "copilot";
+  copilotModelFast?: string;
+  copilotModelSmart?: string;
   codexModelFast?: string;
   codexModelSmart?: string;
   codexEffortFast?: string;
@@ -73,9 +75,11 @@ function defaultsFromEnv(): AppSettings {
     autoGenerate: AUTO_GENERATE_VIZ,
     maxRetries: MAX_VIZ_GEN_RETRIES,
     theme: "light",
-    provider: ["codex", "gemini", "claude", "pi"].includes(process.env.GETIT_DEFAULT_PROVIDER ?? "")
+    provider: ["codex", "gemini", "claude", "pi", "copilot"].includes(process.env.GETIT_DEFAULT_PROVIDER ?? "")
       ? process.env.GETIT_DEFAULT_PROVIDER as AppSettings["provider"]
       : "codex",
+    copilotModelFast: process.env.COPILOT_MODEL_FAST || "auto",
+    copilotModelSmart: process.env.COPILOT_MODEL_SMART || "auto",
     codexModelFast: "gpt-5.5",
     codexModelSmart: "gpt-5.5",
     codexEffortFast: "low",
@@ -104,7 +108,7 @@ export function loadSettings(): AppSettings {
     if (parsed && (parsed.v === 1 || parsed.v === VERSION)) {
       const env = defaultsFromEnv();
 
-      const loadedProvider = ["codex", "gemini", "claude", "pi"].includes(parsed.provider as string)
+      const loadedProvider = ["codex", "gemini", "claude", "pi", "copilot"].includes(parsed.provider as string)
         ? (parsed.provider as AppSettings["provider"])
         : env.provider;
         
@@ -137,6 +141,8 @@ export function loadSettings(): AppSettings {
             ? Math.min(10, Math.floor(parsed.maxRetries))
             : env.maxRetries,
         provider: loadedProvider,
+        copilotModelFast: typeof parsed.copilotModelFast === "string" ? parsed.copilotModelFast : env.copilotModelFast,
+        copilotModelSmart: typeof parsed.copilotModelSmart === "string" ? parsed.copilotModelSmart : env.copilotModelSmart,
         codexModelFast: typeof parsed.codexModelFast === "string" ? parsed.codexModelFast : env.codexModelFast,
         codexModelSmart: typeof parsed.codexModelSmart === "string" ? parsed.codexModelSmart : env.codexModelSmart,
         codexEffortFast: typeof parsed.codexEffortFast === "string" ? parsed.codexEffortFast : env.codexEffortFast,
@@ -190,6 +196,8 @@ export function saveSettings(s: AppSettings): void {
     autoGenerate: !!s.autoGenerate,
     maxRetries: Math.min(10, Math.max(0, Math.floor(s.maxRetries))),
     provider: s.provider,
+    copilotModelFast: s.copilotModelFast,
+    copilotModelSmart: s.copilotModelSmart,
     codexModelFast: s.codexModelFast,
     codexModelSmart: s.codexModelSmart,
     codexEffortFast: s.codexEffortFast,

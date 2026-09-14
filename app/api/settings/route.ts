@@ -37,9 +37,11 @@ export async function POST(req: Request) {
   const current = loadSettings();
   const next: AppSettings = {
     provider:
-      ["codex", "gemini", "claude", "pi"].includes(b.provider as string)
+      ["codex", "gemini", "claude", "pi", "copilot"].includes(b.provider as string)
         ? b.provider!
         : current.provider,
+    copilotModelFast: typeof b.copilotModelFast === "string" && b.copilotModelFast.trim() ? b.copilotModelFast.trim() : current.copilotModelFast,
+    copilotModelSmart: typeof b.copilotModelSmart === "string" && b.copilotModelSmart.trim() ? b.copilotModelSmart.trim() : current.copilotModelSmart,
     codexModelFast: typeof b.codexModelFast === "string" ? b.codexModelFast : current.codexModelFast,
     codexModelSmart: typeof b.codexModelSmart === "string" ? b.codexModelSmart : current.codexModelSmart,
     codexEffortFast: typeof b.codexEffortFast === "string" ? b.codexEffortFast : current.codexEffortFast,

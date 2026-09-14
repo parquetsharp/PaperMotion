@@ -43,6 +43,7 @@ type RateWindow = {
 } | null;
 
 type ProviderStatus = {
+  statusMessage?: string;
   provider: ProviderName;
   label: string;
   docsUrl: string;
@@ -189,7 +190,7 @@ function AccountPanel({ open }: { open: boolean }) {
         <p className="text-[10.5px] font-semibold uppercase tracking-wider text-[var(--ink-500)]">
           {data?.label ?? "AI Provider"} account
         </p>
-        {data?.authenticated && (
+        {data?.authenticated && data.provider !== "copilot" && (
           <button
             type="button"
             onClick={handleSignOut}
@@ -217,7 +218,9 @@ function AccountPanel({ open }: { open: boolean }) {
       {!loading && data && (
         <>
           {/* Identity */}
-          {data.authenticated && data.account ? (
+          {data.provider === "copilot" ? (
+            <p className="mt-2 text-[11.5px] text-[var(--ink-500)]">{data.statusMessage}</p>
+          ) : data.authenticated && data.account ? (
             <div className="mt-1.5 flex items-center gap-2">
               <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--surface-sunken)] text-[var(--ink-500)]">
                 <UserIcon className="h-3 w-3" />
@@ -273,7 +276,7 @@ function AccountPanel({ open }: { open: boolean }) {
             ) : null
           ) : data.authenticated && data.usage && data.usage.calls > 0 ? (
             <UsageRow usage={data.usage} showCost={data.authMode === "apiKey"} />
-          ) : data.authenticated ? (
+          ) : data.authenticated && data.provider !== "copilot" ? (
             <div className="mt-4 text-[10.5px] text-[var(--ink-400)]">
               No tokens used today yet.
             </div>
@@ -290,14 +293,14 @@ function AccountPanel({ open }: { open: boolean }) {
               <ExternalLink className="h-2.5 w-2.5" />
               Help
             </a>
-            <button
+            {data.provider !== "copilot" && <button
               type="button"
               onClick={openSetup}
               className="inline-flex items-center gap-1 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-2 py-1 text-[10.5px] font-medium text-[var(--ink-700)] transition hover:border-[var(--accent-300)] hover:text-[var(--accent-700)]"
             >
               <Settings2 className="h-2.5 w-2.5" />
               {data.authenticated ? "Switch provider" : "Connect"}
-            </button>
+            </button>}
           </div>
         </>
       )}

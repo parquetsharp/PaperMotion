@@ -15,6 +15,8 @@ const eslintConfig = defineConfig([
     "electron/*-bin/**",
     "electron/assets/**",
     "public/pdf.worker.min.mjs",
+    "extension/build/**",
+    "scripts/extension-out/**",
   ]),
   {
     files: ["electron/**/*.js", "**/*.cjs"],

@@ -22,6 +22,7 @@ import TooltipChip from "@/components/TooltipChip";
 import type { DetectedConcept, VizSpec } from "@/lib/schemas";
 import { AUTO_GENERATE_VIZ, MAX_VIZ_GEN_RETRIES } from "@/lib/config";
 import { PROVIDER_LABELS, type ProviderName } from "@/lib/provider-types";
+import type { PersistedTagServer } from "@/lib/tags-store";
 
 type DocMeta = {
   docId: string;
@@ -31,7 +32,7 @@ type DocMeta = {
   pages: Array<{ pageIndex: number; width: number; height: number; text: string }>;
 };
 
-type TagState = Tag & {
+type TagState = Tag & Pick<PersistedTagServer, "revision" | "feedback" | "versions"> & {
   concept: DetectedConcept;
   spec?: VizSpec;
   error?: string;
@@ -65,6 +66,7 @@ const POLL_FAST_MS = 1500;
 const POLL_IDLE_MS = 5000;
 
 export default function ViewerClient({ docId }: { docId: string }) {
+  const [mobilePane, setMobilePane] = useState<"document" | "study">("study");
   const [meta, setMeta] = useState<DocMeta | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -94,7 +96,7 @@ export default function ViewerClient({ docId }: { docId: string }) {
         if (cancelled) return;
         if (typeof s.autoGenerate === "boolean") setAutoGenerate(s.autoGenerate);
         if (typeof s.maxRetries === "number") setMaxRetries(s.maxRetries);
-        if (s.provider === "codex" || s.provider === "gemini" || s.provider === "claude" || s.provider === "pi")
+        if (s.provider === "codex" || s.provider === "gemini" || s.provider === "claude" || s.provider === "pi" || s.provider === "copilot")
           setProvider(s.provider);
       })
       .catch(() => {});
@@ -111,7 +113,7 @@ export default function ViewerClient({ docId }: { docId: string }) {
       if (!detail) return;
       if (typeof detail.autoGenerate === "boolean") setAutoGenerate(detail.autoGenerate);
       if (typeof detail.maxRetries === "number") setMaxRetries(detail.maxRetries);
-      if (detail.provider === "codex" || detail.provider === "gemini" || detail.provider === "claude" || detail.provider === "pi")
+      if (detail.provider === "codex" || detail.provider === "gemini" || detail.provider === "claude" || detail.provider === "pi" || detail.provider === "copilot")
         setProvider(detail.provider);
     };
     window.addEventListener(SETTINGS_EVENT, onChange);
@@ -302,6 +304,7 @@ export default function ViewerClient({ docId }: { docId: string }) {
   const handleTagClick = useCallback(
     (id: string) => {
       setActiveTagId(id);
+      setMobilePane("study");
       // Bring the Visualizer forward no matter which tool is open, so the
       // clicked concept renders (or starts rendering) where the user can see
       // it. Switching mode also runs the normal tab-change side effects —
@@ -310,6 +313,7 @@ export default function ViewerClient({ docId }: { docId: string }) {
       setRightPaneMode("visualizer");
       const tag = tags.find((t) => t.id === id);
       if (!tag) return;
+      if (!tag.spec && !autoGenerate) return;
       if (tag.generating) return; // already in flight — don't double-queue
       if (tag.spec && !tag.error) return; // already rendered — selecting is enough
       // Idle OR previously failed → (re)generate. Clearing any error optimistically
@@ -324,7 +328,7 @@ export default function ViewerClient({ docId }: { docId: string }) {
         body: JSON.stringify({ tagId: id }),
       }).catch(() => {});
     },
-    [docId, tags],
+    [docId, tags, autoGenerate],
   );
 
   // Visualizer reported a runtime error → single-attempt policy: surface the
@@ -482,7 +486,7 @@ export default function ViewerClient({ docId }: { docId: string }) {
       {/* Top tab bar — Upload + Library pinned on the left, then the
           open-document tab (acts as the active "window"). Clicking
           Upload or Library navigates away, closing this doc tab. */}
-      <div className="tab-bar tab-bar--fused shrink-0">
+      <div className="tab-bar tab-bar--fused shrink-0 overflow-x-auto">
         <TooltipChip tip="Upload a new PDF.">
           <Link href="/" aria-label="Upload" className="tab-item">
             <Upload className="h-3.5 w-3.5 text-[var(--ink-400)]" />
@@ -520,8 +524,12 @@ export default function ViewerClient({ docId }: { docId: string }) {
         </div>
       </div>
 
+      <div className="flex shrink-0 gap-1 border-b border-[var(--border-subtle)] px-2 py-1 lg:hidden" role="tablist" aria-label="Reader view">
+        <button type="button" role="tab" aria-selected={mobilePane === "document"} onClick={() => setMobilePane("document")} className={`flex flex-1 items-center justify-center gap-2 rounded px-3 py-2 text-xs ${mobilePane === "document" ? "bg-[var(--surface-raised)] text-[var(--ink-900)]" : "text-[var(--ink-500)]"}`}><FileText size={14} />Document</button>
+        <button type="button" role="tab" aria-selected={mobilePane === "study"} onClick={() => setMobilePane("study")} className={`flex flex-1 items-center justify-center gap-2 rounded px-3 py-2 text-xs ${mobilePane === "study" ? "bg-[var(--surface-raised)] text-[var(--ink-900)]" : "text-[var(--ink-500)]"}`}><BookOpen size={14} />Study</button>
+      </div>
       <div className="flex min-h-0 flex-1 gap-2 bg-[var(--surface-canvas)] p-2">
-        <div className="min-w-0 flex-1 overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-raised)]">
+        <div className={`${mobilePane === "document" ? "flex" : "hidden"} min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-raised)] lg:flex`}>
           <PdfViewer
             pdfUrl={meta.pdfUrl}
             numPages={meta.numPages}
@@ -533,18 +541,20 @@ export default function ViewerClient({ docId }: { docId: string }) {
             providerLabel={PROVIDER_LABELS[provider]}
           />
         </div>
-        <div className="flex w-[44%] min-w-[420px] max-w-[720px] flex-col overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-raised)]">
+        <div className={`${mobilePane === "study" ? "flex" : "hidden"} w-full min-w-0 flex-col overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-raised)] lg:flex lg:w-[44%] lg:min-w-[420px] lg:max-w-[720px]`}>
           <RightPane
             docId={docId}
             mode={rightPaneMode}
             onModeChange={setRightPaneMode}
             providerLabel={PROVIDER_LABELS[provider]}
             visualizer={{
+              tag: activeTag ?? undefined,
+              onUpdate: updated => setTags(previous => previous.map(tag => tag.id === updated.id ? updated : tag)),
               spec: activeTag?.generating || activeTag?.error ? null : activeSpec,
               loading:
                 activeTag != null &&
                 !activeTag.error &&
-                (activeTag.generating || !activeTag.spec),
+                activeTag.generating,
               loadingDetail:
                 activeTag?.generating && (activeTag.attempts ?? 0) >= 1
                   ? `repairing — attempt ${(activeTag.attempts ?? 0) + 1} of ${maxRetries + 1}`
@@ -558,9 +568,9 @@ export default function ViewerClient({ docId }: { docId: string }) {
                   ? `${PROVIDER_LABELS[provider]} is reading the document — tags will appear inline as soon as they're detected.`
                   : autoGenerate
                     ? "Click any colored tag in the document to render its concept here."
-                    : "Click any tag to generate its visualization. (manual mode — toggle auto-generate in settings)",
+                    : activeTag ? `${activeTag.label}: not generated` : "Select a concept",
               activeTagError: activeTag?.error ?? null,
-              onRetry: activeTag ? () => handleTagClick(activeTag.id) : undefined,
+              onRetry: activeTag ? () => handleRetryTag(activeTag.id) : undefined,
               onRegenerate:
                 activeTag && activeTag.spec && !activeTag.generating
                   ? () => handleRegenerateTag(activeTag.id)

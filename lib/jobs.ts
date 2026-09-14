@@ -42,6 +42,7 @@ import {
   type PersistedTagsFile,
 } from "./tags-store";
 import type { DetectedConcept, VizType } from "./schemas";
+import { isVizEditing } from "./viz-edit-lock";
 
 // Number of detection batches running concurrently. Each batch is one Codex
 // call covering up to DETECTION_BATCH_PAGES pages, so up to
@@ -345,6 +346,7 @@ export function requestVizGeneration(
   tagId: string,
   runtimeError?: string,
 ): void {
+  if (isVizEditing(docId, tagId)) return;
   const maxRetries = loadSettings().maxRetries;
   mergeTagsFile(docId, (file) => ({
     ...file,
@@ -382,7 +384,7 @@ export function requestRetryFailedViz(docId: string): number {
   mergeTagsFile(docId, (file) => ({
     ...file,
     tags: file.tags.map((t) => {
-      if (!t.error) return t;
+      if (!t.error || isVizEditing(docId, t.id)) return t;
       requeued++;
       return {
         ...t,

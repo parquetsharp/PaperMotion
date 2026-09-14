@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "PaperMotion Study Companion",
+  "version": "0.1.0",
+  "description": "Study PDFs with your local PaperMotion engine: chat, flashcards, quizzes, and concepts.",
+  "minimum_chrome_version": "116",
+  "permissions": ["sidePanel", "storage", "activeTab", "tabs"],
+  "host_permissions": ["http://127.0.0.1/*", "http://localhost/*", "file:///*"],
+  "optional_host_permissions": ["https://*/*", "http://*/*"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "side_panel": { "default_path": "panel.html" },
+  "action": { "default_title": "Study with PaperMotion", "default_icon": { "32": "icon-32.png" } },
+  "icons": { "16": "icon-16.png", "32": "icon-32.png", "48": "icon-48.png", "128": "icon-128.png" },
+  "externally_connectable": { "matches": ["http://127.0.0.1/*", "http://localhost/*"] },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; connect-src http: https: file:;"
+  }
+}
