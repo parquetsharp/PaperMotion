@@ -3,7 +3,8 @@ import { test } from "node:test";
 import { validateInteractiveSpec } from "../lib/interactive-viz";
 import { vizSchemaFor } from "../lib/schemas";
 import { buildVizPrompt } from "../lib/agents/viz";
-import { editVisualization, VizEditError } from "../lib/viz-edit";
+import { deleteVisualization, editVisualization, VizEditError } from "../lib/viz-edit";
+import { visualizationVersions } from "../lib/viz-versions";
 import type { PersistedTagsFile } from "../lib/tags-store";
 import type { VizSpec } from "../lib/schemas";
 import { beginVizEdit } from "../lib/viz-edit-lock";
@@ -118,4 +119,27 @@ test("revision completion preserves unrelated updates and rejects changed base s
   assert.equal(file.activeTagId, null);
   await assert.rejects(editVisualization("race", "tag", { action: "generate", type: "formula", revision: 1 }, { ...dependencies, generate: async () => { file.tags[0].spec = { ...spec, title: "Changed elsewhere" }; return spec; } }), (error: unknown) => error instanceof VizEditError && error.status === 409);
   assert.equal(file.tags[0].spec?.title, "Changed elsewhere");
+});
+
+test("saved versions can switch repeatedly without losing choices or generating new output", async () => {
+  const spec: VizSpec = { type: "formula", title: "Latest", caption: "Momentum equation", main_latex: "p=mv", steps: [] };
+  let file: PersistedTagsFile = { v: 1, docId: "versions", savedAt: 0, activeTagId: "tag", pagesAnalyzed: [0], tags: [{ id: "tag", page: 0, endX: 1, endY: 1, fontHeight: 12, type: "formula", label: "Momentum", ready: true, generating: false, spec, concept: { label: "Momentum", type: "formula", context: "Mass times velocity", anchor: "Momentum" }, versions: [{ at: 10, spec: { ...spec, title: "First" } }, { at: 20, spec: { ...spec, title: "Second" } }] }] };
+  const deps = { document: () => ({ filename: "paper.pdf", extracted: { pages: [] } }), load: () => structuredClone(file), save: (_id: string, value: Omit<PersistedTagsFile, "v" | "docId" | "savedAt">) => { file = { ...file, ...value }; }, generate: async () => { throw new Error("Must not call model"); } };
+  const choices = visualizationVersions(file.tags[0]);
+  for (const index of [0, 2, 1, 0, 2]) {
+    const tag = file.tags[0];
+    await editVisualization("versions", "tag", { action: "restore", versionId: choices[index].id, revision: tag.revision ?? 0 }, deps);
+    assert.equal(file.tags[0].spec?.title, choices[index].spec.title);
+    assert.deepEqual(visualizationVersions(file.tags[0]), choices);
+  }
+  await assert.rejects(editVisualization("versions", "tag", { action: "restore", versionId: "missing", revision: file.tags[0].revision }, deps), { status: 409 });
+  await assert.rejects(editVisualization("versions", "tag", { action: "restore", versionId: choices[0].id, revision: 0 }, deps), { status: 409 });
+  file.tags[0].generating = true;
+  const revision = file.tags[0].revision;
+  deleteVisualization("versions", "tag", { revision }, deps);
+  assert.deepEqual(file.tags, []);
+  assert.equal(file.activeTagId, null);
+  assert.deepEqual(file.pagesAnalyzed, [0]);
+  assert.deepEqual(file.deletedTagIds, ["tag"]);
+  assert.deepEqual(deleteVisualization("versions", "tag", { revision }, deps), { deletedTagId: "tag" });
 });

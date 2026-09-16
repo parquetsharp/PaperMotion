@@ -33,7 +33,7 @@ type DocMeta = {
   pages: Array<{ pageIndex: number; width: number; height: number; text: string }>;
 };
 
-type TagState = Tag & Pick<PersistedTagServer, "revision" | "feedback" | "versions"> & {
+type TagState = Tag & Pick<PersistedTagServer, "revision" | "feedback" | "versions" | "versionId" | "versionAt"> & {
   concept: DetectedConcept;
   spec?: VizSpec;
   error?: string;
@@ -49,6 +49,7 @@ type TagsApiResponse = {
     tags: TagState[];
     activeTagId: string | null;
     pagesAnalyzed: number[];
+    deletedTagIds?: string[];
   } | null;
   detectionRunning: boolean;
   vizQueueRunning: boolean;
@@ -81,6 +82,7 @@ export default function ViewerClient({ docId }: { docId: string }) {
   const [detectionError, setDetectionError] = useState<string | undefined>();
 
   const [activeTagId, setActiveTagId] = useState<string | null>(null);
+  const deletedTagIds = useRef(new Set<string>());
 
   // Settings (auto-generate, max repair attempts) — start from env-baked
   // defaults, hydrate from /api/settings, react to `getit:settings`
@@ -250,12 +252,19 @@ export default function ViewerClient({ docId }: { docId: string }) {
         // Skip re-renders if savedAt hasn't moved (no real change).
         if (file.savedAt === lastSavedAtRef.current) return;
         lastSavedAtRef.current = file.savedAt;
-        setTags(file.tags as TagState[]);
+        for (const id of file.deletedTagIds ?? []) deletedTagIds.current.add(id);
+        setTags(previous => file.tags.filter(tag => !deletedTagIds.current.has(tag.id)).map(tag => {
+          const local = previous.find(item => item.id === tag.id);
+          return local && (local.revision ?? 0) > (tag.revision ?? 0) ? local : tag;
+        }));
         setPagesAnalyzed(new Set(file.pagesAnalyzed));
         // Only honor the server's active tag if the user hasn't picked
         // one locally yet — otherwise the server's stale value would
         // override a fresh click.
-        setActiveTagId((cur) => cur ?? file.activeTagId);
+        setActiveTagId((cur) => {
+          const candidate = cur ?? file.activeTagId;
+          return candidate && !deletedTagIds.current.has(candidate) ? candidate : null;
+        });
       } catch {
         /* network blip — try again next tick */
       }
@@ -566,6 +575,11 @@ export default function ViewerClient({ docId }: { docId: string }) {
             visualizer={{
               tag: activeTag ?? undefined,
               onUpdate: updated => setTags(previous => previous.map(tag => tag.id === updated.id ? updated : tag)),
+              onDelete: id => {
+                deletedTagIds.current.add(id);
+                setTags(previous => previous.filter(tag => tag.id !== id));
+                setActiveTagId(current => current === id ? null : current);
+              },
               spec: activeTag?.generating || activeTag?.error ? null : activeSpec,
               loading:
                 activeTag != null &&
@@ -581,7 +595,7 @@ export default function ViewerClient({ docId }: { docId: string }) {
               emptyHint: activeTag?.error
                 ? "We weren't able to build a working visualization for this concept. Retry below, or pick another tag — most of them work cleanly."
                 : tags.length === 0
-                  ? `${PROVIDER_LABELS[provider]} is reading the document — tags will appear inline as soon as they're detected.`
+                  ? detecting ? `${PROVIDER_LABELS[provider]} is reading the document — tags will appear inline as soon as they're detected.` : "No visualizations selected."
                   : autoGenerate
                     ? "Click any colored tag in the document to render its concept here."
                     : activeTag ? `${activeTag.label}: not generated` : "Select a concept",

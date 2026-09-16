@@ -45,6 +45,8 @@ import type { DetectedConcept, VizType } from "./schemas";
 import { isVizEditing } from "./viz-edit-lock";
 import { normalizeConcurrency } from "./job-concurrency";
 import { registerJobWakeup } from "./job-wakeups";
+import { randomUUID } from "node:crypto";
+import { generatedVersion } from "./viz-versions";
 
 const DETECTION_BATCH_PAGES = 5;
 /** Give up on a page after this many generic (non rate-limit) failures so a
@@ -284,7 +286,7 @@ function appendDetectionResult(
 ) {
   let added = 0;
   mergeTagsFile(docId, (file) => {
-    const existingIds = new Set(file.tags.map((t) => t.id));
+    const existingIds = new Set([...file.tags.map((t) => t.id), ...(file.deletedTagIds ?? [])]);
     const fresh = newTags.filter((t) => !existingIds.has(t.id));
     added = fresh.length;
     const merged: PersistedTagsFile = {
@@ -516,7 +518,8 @@ async function processViz(docId: string, tagId: string, docTitle: string) {
         t.id === tagId
           ? {
               ...t,
-              spec,
+              ...generatedVersion(t, spec, randomUUID()),
+              revision: (t.revision ?? 0) + 1,
               ready: true,
               generating: false,
               attempts: (t.attempts ?? 0) + 1,

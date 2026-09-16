@@ -33,6 +33,7 @@ export function createManualVisualization(docId: string, input: unknown, depende
   }
   const current = dependencies.load(docId);
   const id = `manual-${request.requestId}`;
+  if (current?.deletedTagIds?.includes(id)) throw new ManualVizError(409, "This visualization was deleted. Select the passage again to create another.");
   const label = request.label ?? request.text.replace(/\s+/g, " ").slice(0, 40);
   const existing = current?.tags.find(tag => tag.id === id);
   if (existing) {

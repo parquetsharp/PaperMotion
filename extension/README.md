@@ -27,7 +27,7 @@ Import alone does not initiate an AI request. Generating study material, chattin
 
 The built-in browser PDF viewer is not modified. Its text selection, scroll position, and current page are not synchronized with the sidebar.
 
-For animation controls, step-by-step lessons, and chat-driven render corrections, choose **Open interactive viewer**. Select a concept and a visualization format there, then use **Generate** or **Discuss and revise visualization**. Revisions support all render types and keep the previous result on failure; **Undo last revision** restores a saved render. These controls run in the local web viewer, not inside the extension's protected execution context.
+For animation controls, step-by-step lessons, and chat-driven render corrections, choose **Open interactive viewer**. Select a concept and a visualization format there, then use **Generate** or **Discuss and revise visualization**. Revisions support all render types and keep the previous result on failure. **Saved version** switches among retained renders without losing the other choices or making an AI call; **Undo last revision** remains available. Use the trash icon and confirm to delete an unwanted tag and all its versions while keeping the PDF. These controls run in the local web viewer, not inside the extension's protected execution context.
 
 ## Access and privacy
 

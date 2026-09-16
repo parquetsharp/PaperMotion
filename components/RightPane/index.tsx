@@ -115,6 +115,7 @@ type Props = {
   visualizer: {
     tag?: PersistedTagServer;
     onUpdate?: (tag: PersistedTagServer) => void;
+    onDelete?: (tagId: string) => void;
     spec: VizSpec | null;
     loading: boolean;
     emptyHint?: string;
@@ -195,7 +196,7 @@ export default function RightPane({ docId, mode, onModeChange, visualizer, provi
           )}
         </div>
       )}
-      {mode === "visualizer" && visualizer.tag && visualizer.onUpdate && <RevisionPanel key={visualizer.tag.id} docId={docId} tag={visualizer.tag} onUpdate={visualizer.onUpdate} />}
+      {mode === "visualizer" && visualizer.tag && visualizer.onUpdate && <RevisionPanel key={visualizer.tag.id} docId={docId} tag={visualizer.tag} onUpdate={visualizer.onUpdate} onDelete={visualizer.onDelete} />}
     </div>
   );
 }
