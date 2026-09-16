@@ -34,6 +34,8 @@ try {
   const page = await browser.newPage();
   const settings = { provider: "copilot", copilotModelFast: "auto", copilotModelSmart: "auto", theme: "light", autoGenerate: false, maxRetries: 3 };
   let writes = 0;
+  const usage = { inputTokens: 1234, outputTokens: 66, totalTokens: 1300, calls: 3, costUsd: 0, day: "2026-09-16", since: 1, updatedAt: 1,
+    copilot: { attempts: 3, totals: { inputTokens: 1234, outputTokens: 66, cacheReadTokens: 100, cacheWriteTokens: 300, nanoAiu: 250000000, premiumRequests: 1.5 }, reported: { inputTokens: 2, outputTokens: 2, cacheReadTokens: 2, cacheWriteTokens: 2, nanoAiu: 2, premiumRequests: 2 } } };
   let modelRequests = 0;
   let modelStatus = 200;
   let modelReply = { models: [
@@ -57,7 +59,7 @@ try {
     } else if (url.pathname === "/api/codex/health") body = { ok: true, kind: null, serial: 0 };
     else if (url.pathname === "/api/doc/settings-test") body = { docId: "settings-test", filename: "A-long-algorithm-paper-name-for-navigation.pdf", pdfUrl: "/unused.pdf", numPages: 0, pages: [] };
     else if (url.pathname === "/api/tags/settings-test") body = { file: { v: 1, tags: [], pagesAnalyzed: [], activeTagId: null }, numPages: 0, detectionRunning: false, vizQueueRunning: false };
-    else if (url.pathname === "/api/provider/status") body = { provider: "copilot", label: "GitHub Copilot", installed: true, authenticated: false, statusMessage: "CLI installed. Sign in to study.", docsUrl: "https://docs.github.com/en/copilot", exposesLimits: false };
+    else if (url.pathname === "/api/provider/status") body = { provider: "copilot", label: "GitHub Copilot", installed: true, authenticated: false, statusMessage: "CLI installed. Sign in to study.", docsUrl: "https://docs.github.com/en/copilot", exposesLimits: false, usage };
     await route.fulfill({ json: body });
   });
   for (const [width, height] of [[1440, 900], [768, 900], [390, 844]]) {
@@ -150,6 +152,27 @@ try {
     await page.mouse.click(width - 5, height - 15);
     await expect(engine).toHaveCount(0);
     await page.getByRole("button", { name: "Account", exact: true }).click();
+    const consumption = page.getByRole("region", { name: "Copilot consumption" });
+    await expect(consumption).toContainText("1,300 (partial)");
+    await expect(consumption).toContainText(`${usage.copilot.totals.nanoAiu / 1e9} (partial)`);
+    await expect(consumption.locator("div").filter({ has: page.locator("dt", { hasText: "Credits used" }) })).toContainText("Not reported");
+    const accountMenu = consumption.locator("xpath=ancestor::div[@style][1]");
+    await expect(accountMenu).toHaveCSS("opacity", "1");
+    const accountBounds = await accountMenu.boundingBox();
+    assert.ok(accountBounds.x >= 0 && accountBounds.x + accountBounds.width <= width && accountBounds.y + accountBounds.height <= height);
+    await page.screenshot({ path: path.join(output, `copilot-usage-${width}.png`) });
+    usage.copilot.totals.nanoAiu += 1000000000;
+    await page.getByRole("button", { name: "Refresh account usage" }).click();
+    await expect(consumption).toContainText(`${usage.copilot.totals.nanoAiu / 1e9} (partial)`);
+    const savedAttempts = usage.copilot.attempts;
+    const savedReports = { ...usage.copilot.reported };
+    usage.copilot.attempts = 0;
+    for (const field of Object.keys(usage.copilot.reported)) usage.copilot.reported[field] = 0;
+    await page.getByRole("button", { name: "Refresh account usage" }).click();
+    await expect(consumption).toContainText("No tracked attempts today");
+    await expect(consumption.locator("div").filter({ has: page.locator("dt", { hasText: "Total tokens" }) })).toContainText("Not reported");
+    usage.copilot.attempts = savedAttempts;
+    usage.copilot.reported = savedReports;
     const help = page.getByRole("link", { name: "Help", exact: true });
     await help.click({ trial: true });
     await page.keyboard.press("Escape");

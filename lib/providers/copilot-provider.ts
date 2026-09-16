@@ -5,6 +5,8 @@ import type { AIProvider, RunOptions, RunJsonInThreadResult } from "../provider-
 import { loadSettings } from "../settings-store";
 import { DATA_DIR } from "../paths";
 import { CodexError } from "../codex-errors";
+import { recordCopilotUsage } from "../usage-store";
+import { parseCopilotUsageOutput, parseCopilotUsageReport } from "./copilot-usage";
 import { runCliBinary } from "./cli-runner";
 import { CopilotFormatError, CopilotToolRequestError, copilotArguments, copilotFailure, parseCopilotOutput, resolveCopilotBinary } from "./copilot-cli";
 
@@ -27,6 +29,7 @@ type Options = {
   run?: typeof runCliBinary;
   resolveBinary?: typeof resolveCopilotBinary;
   settings?: () => { copilotModelFast?: string; copilotModelSmart?: string };
+  recordUsage?: typeof recordCopilotUsage;
 };
 
 export class CopilotProvider implements AIProvider {
@@ -35,13 +38,16 @@ export class CopilotProvider implements AIProvider {
   private readonly run: typeof runCliBinary;
   private readonly resolveBinary: typeof resolveCopilotBinary;
   private readonly settings: NonNullable<Options["settings"]>;
+  private readonly recordUsage: typeof recordCopilotUsage;
   private readonly active = new Set<string>();
+  private readonly usageReportUnsupported = new Set<string>();
 
   constructor(options: Options = {}) {
     this.directory = options.directory ?? path.join(DATA_DIR, "copilot-sessions");
     this.run = options.run ?? runCliBinary;
     this.resolveBinary = options.resolveBinary ?? resolveCopilotBinary;
     this.settings = options.settings ?? loadSettings;
+    this.recordUsage = options.recordUsage ?? recordCopilotUsage;
   }
 
   private async complete<T>(input: string, schema: object, sessionId: string, model: string, opts: RunOptions, resume = false, keepWorkspace = false) {
@@ -56,7 +62,12 @@ export class CopilotProvider implements AIProvider {
       let request = `Return ONLY a JSON object matching this schema:\n${JSON.stringify(schema)}\n\n${constraints}\n\nStudy request:\n${input}\n\n${constraints}`;
       for (let attempt = 0; attempt < 2; attempt++) {
         opts.signal?.throwIfAborted();
-        const result = await this.run(binary, copilotArguments(model, sessionId, resume || attempt > 0), {
+        const usagePath = path.join(cwd, `usage-${randomUUID()}.json`);
+        let stdout = "";
+        let result: Awaited<ReturnType<typeof runCliBinary>>;
+        try {
+          const args = copilotArguments(model, sessionId, resume || attempt > 0);
+          const runOptions: NonNullable<Parameters<typeof runCliBinary>[2]> = {
           cwd,
           timeoutMs: 300000,
           signal: opts.signal,
@@ -68,7 +79,27 @@ export class CopilotProvider implements AIProvider {
             GITHUB_COPILOT_PROMPT_MODE_WORKSPACE_MCP: "false",
             GITHUB_COPILOT_PROMPT_MODE_EXTENSIONS: "false",
           },
-        });
+          };
+          result = await this.run(binary, this.usageReportUnsupported.has(binary) ? args : [...args, "--usage-output-file", usagePath], runOptions);
+          if (result.exitCode !== 0 && /(?:unknown|unrecognized) option[^\r\n]*--usage-output-file/i.test(result.stderr)) {
+            this.usageReportUnsupported.add(binary);
+            opts.signal?.throwIfAborted();
+            result = await this.run(binary, args, runOptions);
+          }
+          stdout = result.stdout;
+        } finally {
+          try {
+            let usage = parseCopilotUsageOutput(stdout);
+            try {
+              if ((await fs.stat(usagePath)).size <= 2_000_000) {
+                const report = parseCopilotUsageReport(JSON.parse(await fs.readFile(usagePath, "utf8")));
+                usage = Object.fromEntries(Object.entries(report).map(([field, value]) => [field, value ?? usage[field as keyof typeof usage]])) as typeof usage;
+              }
+            } catch {}
+            this.recordUsage(sessionId, usage, !resume && attempt === 0);
+          } catch {}
+          await fs.rm(usagePath, { force: true }).catch(() => {});
+        }
         opts.signal?.throwIfAborted();
         if (result.exitCode !== 0) throw copilotFailure(result.stderr || result.stdout);
         try {

@@ -124,7 +124,7 @@ export async function GET() {
     const status: ProviderStatus = {
       provider, label, docsUrl, installed, authenticated,
       version: null, authMode: "account", exposesLimits: false,
-      account: null, rateLimits: null, usage: null,
+      account: null, rateLimits: null, usage,
       statusMessage: !installed ? "Copilot CLI not found. Install it through your approved software source."
         : health.kind === "auth_lost" ? "Sign-in required: run copilot login in your terminal, then retry."
         : authenticated ? "Connected on the last study request."

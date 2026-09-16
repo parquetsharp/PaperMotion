@@ -94,7 +94,7 @@ Model changes apply after Settings saves them, to requests launched subsequently
 
 PaperMotion invokes the real CLI directly, skipping VS Code installation bootstrappers and disabling automatic CLI updates. If the engine cannot find it, set `COPILOT_CLI_PATH` to the real executable or the installed npm package's JavaScript entry point and restart the engine. `GETIT_DEFAULT_PROVIDER=copilot`, `COPILOT_MODEL_FAST`, and `COPILOT_MODEL_SMART` provide optional defaults; saved Settings take precedence.
 
-Study requests send relevant document text to GitHub Copilot and consume your plan's allowance. Organization restrictions remain in effect. Model tools are disabled, built-in MCP servers are disabled, and prompts run outside your project working directory without project instructions. This is not an OS-level sandbox. Copilot CLI manages its own credentials and native session storage; PaperMotion never reads VS Code tokens. The Account panel verifies connectivity on successful study requests rather than assuming an installed CLI is signed in. Token/billing totals are not currently exposed for this provider.
+Study requests send relevant document text to GitHub Copilot and consume your plan's allowance. Organization restrictions remain in effect. Model tools are disabled, built-in MCP servers are disabled, and prompts run outside your project working directory without project instructions. This is not an OS-level sandbox. Copilot CLI manages its own credentials and native session storage; PaperMotion never reads VS Code tokens. The Account panel verifies connectivity on successful study requests rather than assuming an installed CLI is signed in. Reported consumption is available in the Account panel as described below.
 
 Copilot responses are validated against each study tool's schema. A schema mismatch or a response requesting tools triggers at most one correction turn in the same session and with the same model. Both cases share that one-turn budget, and tools remain disabled throughout. This extra turn consumes Copilot allowance. Invalid corrected output is rejected; authentication, policy, and network errors are not retried by this correction step.
 
@@ -105,6 +105,16 @@ For **Source** concepts, Copilot summarizes the supplied document context rather
 Run `npm run test:copilot` for adapter checks, `npm run test:copilot-models` for discovery/protocol/API checks, and `npm run test:copilot:browser` for the extension workflow using a local CLI fixture, including model discovery and correction of an oversized graph overview. The fixture tests do not authenticate your account or consume Copilot quota. Live use still requires `copilot login`.
 
 ## Configuration and saved work
+
+### Consumption metrics
+
+Open **Account** to view today's provider usage; the panel refreshes every five seconds while open and has a manual refresh button. Token totals remain available for other providers, with reported USD cost for API-key providers and Codex subscription limits where supported.
+
+For **GitHub Copilot**, the panel shows input/output/total tokens, cache reads/writes (already included in input tokens), AI units, weighted premium requests, and CLI attempts. These are local-calendar-day totals from PaperMotion on this machine, not account-wide usage or remaining quota. AI units are the CLI's reported `totalNanoAiu` divided by one billion. They are **not labeled as credits or USD**; the current CLI does not report an explicit credit amount, so **Credits used** shows **Not reported**, with a link to GitHub billing.
+
+Usage is recorded after each CLI attempt, including corrections and failed validation when metadata is reported. Cumulative per-session checkpoints prevent chat resumes and retries from double-counting usage. No token estimates or raw prompts are stored by the tracker; numeric totals/checkpoints live in the local usage JSON file. Metrics persist across restarts and reset their displayed daily bucket at local midnight. Older CLI versions can fall back to reported billing metadata without token counts. Missing data is shown as **Not reported**, and incomplete coverage as **partial**, rather than zero.
+
+Tracking starts with this update; past usage is not backfilled. The first resumed turn of a pre-existing chat establishes a baseline and may be marked unreported; subsequent turns use the difference from that baseline. CLI crashes or missing metadata can leave totals incomplete. GitHub billing remains authoritative for actual charged credits. Checkpoints are local to the engine and are not returned by the status API. Tests: `npm run test:usage`, `npm run test:copilot`, and `npm run test:viewer-settings`.
 
 ### Parallel requests
 

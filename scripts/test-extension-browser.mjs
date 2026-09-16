@@ -267,6 +267,20 @@ try {
   console.log("Flashcards, quiz scoring, concepts, reload persistence, and responsive screenshots passed.");
 
   if (useCopilot) await checkSourceRecovery();
+  if (useCopilot) {
+    const status = await (await fetch(`${origin}/api/provider/status`)).json();
+    const usage = status.usage;
+    assert.ok(usage.copilot.attempts > modelCalls, "Usage includes correction attempts that returned no valid study result");
+    assert.equal(usage.calls, usage.copilot.attempts, "The router must not count an attempt twice");
+    assert.equal(usage.inputTokens, usage.copilot.attempts * 100);
+    assert.equal(usage.outputTokens, usage.copilot.attempts * 20);
+    assert.equal(usage.totalTokens, usage.copilot.attempts * 120);
+    assert.equal(usage.copilot.totals.nanoAiu, usage.copilot.attempts * 500000000);
+    assert.equal(usage.copilot.totals.premiumRequests, usage.copilot.attempts);
+    assert.equal(usage.copilot.reported.inputTokens, usage.copilot.attempts);
+    assert.equal(JSON.stringify(status).includes("copilotCheckpoints"), false);
+    console.log("Usage API reports exact fixture tokens, AI units, and premium requests, including corrections without double counting.");
+  }
   if (process.argv.includes("--manual-selection")) await checkManualVisualizations({ context, origin, docId: document.docId, output });
 
   if (!useEdge) {

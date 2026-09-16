@@ -19,6 +19,8 @@ async function main() {
   let history = [];
   if (args.some(value => value.startsWith("--resume="))) history = JSON.parse(await fs.readFile("fixture-session.json", "utf8"));
   history.push(prompt);
+  const usageIndex = args.indexOf("--usage-output-file");
+  if (usageIndex >= 0) await fs.writeFile(args[usageIndex + 1], JSON.stringify({ totalPremiumRequestCost: history.length, totalNanoAiu: history.length * 500000000, modelMetrics: { fixture: { usage: { inputTokens: history.length * 100, outputTokens: history.length * 20, cacheReadTokens: history.length * 30, cacheWriteTokens: history.length * 40 } } } }));
   if (schema.properties?.type?.const === "2d-text") {
     assert.match(prompt, /No tools are available/);
     assert.match(prompt, /Web search is unavailable/);

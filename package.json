@@ -32,6 +32,7 @@
     "companion:start": "node scripts/start-companion.mjs",
     "test:extension": "tsx --test scripts/test-extension-security.ts scripts/test-extension-client.ts",
     "test:copilot": "tsx --test scripts/test-copilot-provider.ts",
+    "test:usage": "tsx --test scripts/test-usage.ts",
     "test:copilot-models": "tsx --test scripts/test-copilot-models.ts",
     "test:viz-edit": "tsx --test scripts/test-viz-edit.ts",
     "test:manual-viz": "tsx --test scripts/test-manual-viz.ts",

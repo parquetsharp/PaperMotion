@@ -229,7 +229,7 @@ export async function runJson<T>(
       signal: link.signal,
     });
     markOk(providerName);
-    recordUsage(providerName, normalizeUsage(providerName, result.usage));
+    if (providerName !== "copilot") recordUsage(providerName, normalizeUsage(providerName, result.usage));
     return result;
   } catch (err) {
     if (link.timedOut()) {
@@ -273,7 +273,7 @@ export async function runJsonInThread<T>(args: {
       opts: { ...(args.opts ?? {}), signal: link.signal },
     });
     markOk(providerName);
-    recordUsage(providerName, normalizeUsage(providerName, result.usage));
+    if (providerName !== "copilot") recordUsage(providerName, normalizeUsage(providerName, result.usage));
     return result;
   } catch (err) {
     if (link.timedOut()) {

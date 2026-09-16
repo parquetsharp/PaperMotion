@@ -5,12 +5,51 @@ import { CopilotFormatError, copilotArguments, copilotFailure, parseCopilotOutpu
 import { mkdtemp, rm, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { CopilotProvider } from "../lib/providers/copilot-provider";
+import { CopilotProvider as RealCopilotProvider } from "../lib/providers/copilot-provider";
+import { writeFile } from "node:fs/promises";
 import type { runCliBinary } from "../lib/providers/cli-runner";
 import { classifyCodexError } from "../lib/codex-errors";
 import { kgBuildSchema, flashcardsGenerateSchema } from "../lib/schemas-kg";
 import { detectionBatchSchema, vizSchemaFor } from "../lib/schemas";
 import { buildVizPrompt } from "../lib/agents/viz";
+import type { recordCopilotUsage } from "../lib/usage-store";
+
+class CopilotProvider extends RealCopilotProvider {
+  constructor(options: ConstructorParameters<typeof RealCopilotProvider>[0] = {}) {
+    super({ recordUsage: () => {}, ...options });
+  }
+}
+
+test("Copilot records each attempt before validation and removes temporary reports", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "copilot-usage-provider-"));
+  const records: Parameters<typeof recordCopilotUsage>[] = [];
+  const paths: string[] = [];
+  let calls = 0;
+  const provider = new CopilotProvider({ directory, resolveBinary: () => "fixture",
+    recordUsage: (...args) => { records.push(args); },
+    run: async (_binary, args) => {
+      calls++;
+      const usagePath = args[args.indexOf("--usage-output-file") + 1];
+      paths.push(usagePath);
+      await writeFile(usagePath, JSON.stringify({ totalPremiumRequestCost: calls, totalNanoAiu: calls * 1e8, modelMetrics: { fixture: { usage: { inputTokens: 100 * calls, outputTokens: 20 * calls, cacheReadTokens: 0, cacheWriteTokens: 0 } } } }));
+      return { stdout: cliOutput(calls === 1 ? '{}' : '{"concepts":[]}'), stderr: "", exitCode: 0 };
+    },
+  });
+  try {
+    await provider.runJson("detect", detectionBatchSchema);
+    assert.equal(records.length, 2);
+    assert.equal(records[0][0], records[1][0]);
+    assert.equal(records[0][2], true);
+    assert.equal(records[1][2], false);
+    assert.equal(records[1][1].inputTokens, 200);
+    assert.notEqual(paths[0], paths[1]);
+    const failed = new CopilotProvider({ directory, resolveBinary: () => "fixture", recordUsage: (...args) => { records.push(args); }, run: async () => ({ stdout: '', stderr: '401 sign in', exitCode: 1 }) });
+    await assert.rejects(failed.runJson("detect", detectionBatchSchema));
+    assert.equal(records.length, 3);
+    assert.equal(records[2][1].inputTokens, null);
+    assert.equal((await readdir(path.join(directory, "work"))).length, 0);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
 
 function cliOutput(content: string) {
   return [
@@ -261,5 +300,25 @@ test("Source generation corrects a tool request once without enabling tools or i
     const mixed = new CopilotProvider({ directory, resolveBinary: () => "fixture", run: async () => { attempts++; return { stdout: attempts === 1 ? toolOutput : cliOutput('{}'), stderr: "", exitCode: 0 }; } });
     await assert.rejects(mixed.runJson(prompt, schema, { webSearch: true }), CopilotFormatError);
     assert.equal(attempts, 2, "Tool and schema corrections share one retry budget");
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test("older CLI usage-report support is optional and missing token totals remain unknown", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "copilot-usage-legacy-"));
+  const records: Parameters<typeof recordCopilotUsage>[] = [];
+  let calls = 0;
+  const provider = new CopilotProvider({ directory, resolveBinary: () => "fixture", recordUsage: (...args) => records.push(args), run: async (_binary, args) => {
+    calls++;
+    if (args.includes("--usage-output-file")) return { stdout: "", stderr: "error: unknown option '--usage-output-file'", exitCode: 1 };
+    return { stdout: cliOutput('{"ok":true}').replace('{"type":"result"}', '{"type":"result","usage":{"premiumRequests":1}}'), stderr: "", exitCode: 0 };
+  } });
+  try {
+    await provider.runJson("first", {});
+    await provider.runJson("second", {});
+    assert.equal(calls, 3);
+    assert.equal(records.length, 2);
+    assert.equal(records[0][1].premiumRequests, 1);
+    assert.equal(records[0][1].inputTokens, null);
+    assert.equal(records[0][1].nanoAiu, null);
   } finally { await rm(directory, { recursive: true, force: true }); }
 });

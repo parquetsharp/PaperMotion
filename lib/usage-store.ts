@@ -18,9 +18,11 @@
  */
 
 import fs from "node:fs";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { DATA_DIR } from "./paths";
 import type { ProviderName } from "./provider-types";
+import { copilotUsageDifference, type CopilotUsageTotals } from "./providers/copilot-usage";
 
 export type ProviderUsage = {
   inputTokens: number;
@@ -34,6 +36,11 @@ export type ProviderUsage = {
   /** Start of the current day's counting (ms epoch). */
   since: number | null;
   updatedAt: number | null;
+  copilot?: {
+    attempts: number;
+    totals: Record<keyof CopilotUsageTotals, number>;
+    reported: Record<keyof CopilotUsageTotals, number>;
+  };
 };
 
 const ZERO: ProviderUsage = {
@@ -47,7 +54,9 @@ const ZERO: ProviderUsage = {
   updatedAt: null,
 };
 
-type UsageFile = Partial<Record<ProviderName, ProviderUsage>>;
+type UsageFile = Partial<Record<ProviderName, ProviderUsage>> & {
+  copilotCheckpoints?: Record<string, CopilotUsageTotals>;
+};
 
 function usagePath(): string {
   return path.join(DATA_DIR, "usage.json");
@@ -67,11 +76,14 @@ function load(): UsageFile {
 }
 
 function persist(all: UsageFile): void {
+  const temporary = `${usagePath()}.${randomUUID()}.tmp`;
   try {
     fs.mkdirSync(DATA_DIR, { recursive: true });
-    fs.writeFileSync(usagePath(), JSON.stringify(all), "utf-8");
+    fs.writeFileSync(temporary, JSON.stringify(all), "utf-8");
+    fs.renameSync(temporary, usagePath());
   } catch {
     /* best-effort */
+    try { fs.unlinkSync(temporary); } catch {}
   }
 }
 
@@ -86,6 +98,38 @@ export function resetUsage(provider: ProviderName): void {
   const all = load();
   delete all[provider];
   persist(all);
+}
+
+export function recordCopilotUsage(sessionId: string, totals: CopilotUsageTotals, newSession: boolean): void {
+  try {
+    const all = load();
+    const previous = all.copilotCheckpoints?.[sessionId];
+    const delta = copilotUsageDifference(totals, previous, newSession);
+    const today = todayKey();
+    const cur = all.copilot?.day === today ? { ...ZERO, ...all.copilot } : { ...ZERO, day: today };
+    const emptyCounts = () => ({ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, nanoAiu: 0, premiumRequests: 0 });
+    cur.copilot ??= { attempts: 0, totals: emptyCounts(), reported: emptyCounts() };
+    cur.copilot.attempts++;
+    for (const field of Object.keys(delta) as Array<keyof CopilotUsageTotals>) {
+      const value = delta[field];
+      if (value !== null && Number.isFinite(value) && value >= 0) {
+        cur.copilot.totals[field] += value;
+        cur.copilot.reported[field]++;
+      }
+    }
+    cur.inputTokens = cur.copilot.totals.inputTokens;
+    cur.outputTokens = cur.copilot.totals.outputTokens;
+    cur.totalTokens = cur.inputTokens + cur.outputTokens;
+    cur.calls++;
+    cur.since ??= Date.now();
+    cur.updatedAt = Date.now();
+    all.copilot = cur;
+    all.copilotCheckpoints ??= {};
+    all.copilotCheckpoints[sessionId] = totals;
+    persist(all);
+  } catch {
+    /* best-effort */
+  }
 }
 
 export type UsageDelta = { inputTokens: number; outputTokens: number; costUsd: number };
