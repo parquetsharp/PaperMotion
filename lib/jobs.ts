@@ -43,17 +43,13 @@ import {
 } from "./tags-store";
 import type { DetectedConcept, VizType } from "./schemas";
 import { isVizEditing } from "./viz-edit-lock";
+import { normalizeConcurrency } from "./job-concurrency";
+import { registerJobWakeup } from "./job-wakeups";
 
-// Number of detection batches running concurrently. Each batch is one Codex
-// call covering up to DETECTION_BATCH_PAGES pages, so up to
-// CONCURRENCY * BATCH_PAGES pages are in flight at once — fast on long docs
-// without a burst big enough to trip the usage window.
-const DETECTION_CONCURRENCY = 3;
 const DETECTION_BATCH_PAGES = 5;
 /** Give up on a page after this many generic (non rate-limit) failures so a
  *  persistently bad page can never wedge the job in a retry loop. */
 const MAX_DETECTION_ATTEMPTS = 2;
-const VIZ_CONCURRENCY = 4;
 const MIN_PAGE_TEXT_LEN = 120;
 
 // ── small helpers ───────────────────────────────────────────────────────
@@ -141,6 +137,7 @@ async function runDetection(docId: string) {
     return batch;
   };
 
+  let releaseWakeup = () => {};
   await new Promise<void>((resolve) => {
     let active = 0;
     let done = false;
@@ -153,7 +150,9 @@ async function runDetection(docId: string) {
     };
 
     const pump = () => {
-      while (active < DETECTION_CONCURRENCY) {
+      if (done) return;
+      const concurrency = normalizeConcurrency(loadSettings().detectionConcurrency, "detectionConcurrency");
+      while (active < concurrency) {
         if (terminalCodexError) {
           finish();
           return;
@@ -198,8 +197,9 @@ async function runDetection(docId: string) {
       }
     };
 
+    releaseWakeup = registerJobWakeup("detectionConcurrency", pump);
     pump();
-  });
+  }).finally(() => releaseWakeup());
 
   // Surface the terminal error so ensureDetection logs it; the health mailbox
   // already carries it for the banner. We never schedule an auto-retry.
@@ -419,6 +419,7 @@ async function runVizQueue(docId: string) {
     return null;
   };
 
+  let releaseWakeup = () => {};
   await new Promise<void>((resolve) => {
     let active = 0;
     let done = false;
@@ -431,7 +432,9 @@ async function runVizQueue(docId: string) {
     };
 
     const pump = () => {
-      while (active < VIZ_CONCURRENCY) {
+      if (done) return;
+      const concurrency = normalizeConcurrency(loadSettings().vizConcurrency, "vizConcurrency");
+      while (active < concurrency) {
         if (stopError) {
           finish();
           return;
@@ -473,8 +476,9 @@ async function runVizQueue(docId: string) {
       }
     };
 
+    releaseWakeup = registerJobWakeup("vizConcurrency", pump);
     pump();
-  });
+  }).finally(() => releaseWakeup());
 
   // Account-level stop: clear the spinner from every tag still queued so the
   // viewer shows them as idle/click-to-retry instead of spinning forever.
@@ -500,7 +504,9 @@ async function processViz(docId: string, tagId: string, docTitle: string) {
     const spec = await generateVizSpec({
       type: tag.type,
       label: tag.concept.label,
-      context: tag.concept.context,
+      context: tag.type === "2d-text"
+        ? `${tag.concept.context}\n\nSOURCE PAGE ${tag.page + 1}:\n${getDoc(docId)?.extracted.pages.find(page => page.pageIndex === tag.page)?.text ?? ""}`
+        : tag.concept.context,
       docTitle,
       previousAttempt,
     });

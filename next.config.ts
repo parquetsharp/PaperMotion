@@ -13,6 +13,7 @@ const pkg = createRequire(import.meta.url)("./package.json") as {
 };
 
 const nextConfig: NextConfig = {
+  distDir: process.env.GETIT_ISOLATED_BUILD === "1" ? ".next-preview" : ".next",
   async headers() {
     return [{
       source: "/extension/pair",

@@ -39,7 +39,38 @@ test("revision prompt contains source, current formula, and successive feedback"
   assert.match(prompt, /Use multiplication, not division/);
   assert.match(prompt, /Explain the units too/);
   assert.match(prompt, /Momentum equals mass times velocity/);
-  assert.match(buildVizPrompt({ type: "interactive", label: "Sort", context: "Sort an array" }), /complete snapshots/);
+  assert.match(buildVizPrompt({ type: "interactive", label: "Sort", context: "Sort an array" }), /simulation_code/);
+});
+
+test("Source prompt permits grounded summaries without browsing or invented references", () => {
+  const prompt = buildVizPrompt({ type: "2d-text", label: "Momentum", context: "Momentum equals mass times velocity." });
+  assert.match(prompt, /without requesting tools/);
+  assert.match(prompt, /Never reconstruct quotations from memory or invent URLs/);
+  assert.match(prompt, /return citations: \[\]/);
+  assert.match(prompt, /external\nsources were not verified/);
+  assert.doesNotMatch(prompt, /best high-confidence quote/);
+});
+
+test("Source output stays English for foreign input, revisions, and repairs without changing other formats", () => {
+  const source = { type: "2d-text" as const, title: "Quantita di moto", caption: "Una definizione dal documento.", body_markdown: "La quantita di moto e massa per velocita.", citations: [] };
+  const base = { type: "2d-text" as const, label: "Quantita di moto", context: source.body_markdown };
+  const prompts = [
+    buildVizPrompt(base),
+    buildVizPrompt({ ...base, revision: { spec: source, feedback: "Rispondi in italiano.", history: ["Solo italiano."] } }),
+    buildVizPrompt({ ...base, previousAttempt: { spec: source, runtimeError: "Rendering failed" } }),
+  ];
+  for (const prompt of prompts) {
+    assert.match(prompt, /Always write the Source response in English/);
+    assert.match(prompt, /citation source\ndescription\) MUST be in English/);
+    assert.match(prompt, /faithful English paraphrase/);
+    assert.ok(prompt.endsWith("This English-only rule also applies to revisions and repair attempts."));
+    assert.doesNotMatch(prompt, /MUST be in the same\nlanguage as the source/);
+  }
+  for (const type of ["3d", "2d-anim", "formula", "graph", "interactive"] as const) {
+    const prompt = buildVizPrompt({ ...base, type });
+    assert.match(prompt, /MUST be in the same\nlanguage as the source/);
+    assert.doesNotMatch(prompt, /Always write the Source response in English/);
+  }
 });
 
 test("visualization revisions preserve source, history, undo, and failed previous renders", async () => {

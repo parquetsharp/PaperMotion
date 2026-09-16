@@ -52,7 +52,7 @@ export async function editVisualization(docId: string, tagId: string, input: unk
       return commit(current => ({ ...current, spec: previous.spec, type: previous.spec.type, ready: true, error: undefined, lastRuntimeError: undefined, revision: request.revision + 1, versions: current.versions?.slice(0, -1), feedback: [...(current.feedback ?? []), { id: randomUUID(), message: "Undo last revision", reply: "Restored the previous version.", status: "applied" as const, at: Date.now() }].slice(-20) }));
     }
 
-    const message = request.feedback || `Generate ${request.type === "interactive" ? "a step-by-step interactive lesson" : request.type === "2d-anim" ? "an animation" : request.type} for this concept.`;
+    const message = request.feedback || `Generate ${request.type === "interactive" ? "an executable algorithm simulator with editable inputs and computed execution steps" : request.type === "2d-anim" ? "an animation" : request.type} for this concept.`;
     let spec: VizSpec;
     try {
       const source = doc.extracted.pages.find(page => page.pageIndex === tag.page)?.text ?? "";

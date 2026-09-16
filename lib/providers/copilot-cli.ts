@@ -55,6 +55,12 @@ export class CopilotFormatError extends CodexError {
   }
 }
 
+export class CopilotToolRequestError extends CodexError {
+  constructor() {
+    super("generic", "GitHub Copilot requested tools instead of returning the study response. Retry the study request.");
+  }
+}
+
 export function parseCopilotResponse<T>(text: string, schema?: object): T {
   const cleaned = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
   let result: unknown;
@@ -99,7 +105,7 @@ export function parseCopilotOutput<T>(stdout: string, schema: object): T {
   }
   const messages = events.filter(event => event.type === "assistant.message");
   if (messages.some(event => event.data?.toolRequests?.length)) {
-    throw new CodexError("generic", "GitHub Copilot requested tools instead of returning the study response. Retry the study request.");
+    throw new CopilotToolRequestError();
   }
   const content = messages.at(-1)?.data?.content;
   if (!events.some(event => event.type === "result") || typeof content !== "string") {

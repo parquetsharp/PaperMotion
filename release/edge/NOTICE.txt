@@ -1,0 +1,22 @@
+PaperMotion Study Companion
+
+PaperMotion is derived from Get It. (previously Braynr Visualizer):
+https://github.com/beltromatti/get-it
+The upstream project is distributed under the Apache License, Version 2.0.
+A copy of that license is included as LICENSE.
+
+The upstream team credits Mattia Beltrami, Matteo Impieri, Filippo Difronzo,
+and Luca Feggi. The Git history also records contributions from Michele / 3mic,
+msjabata25, and wanikua. zhenyuduan98 contributed the PaperMotion local-web
+adaptation. These credits do not imply endorsement of this distribution.
+
+This distribution includes modifications for a local-browser workflow,
+Edge companion extension, paired study API, GitHub Copilot integration,
+visualization feedback, and algorithm simulation. See MODIFICATIONS.md in
+the companion source release for a file-level change inventory.
+
+Other bundled software retains its own license and copyright notices.
+See THIRD_PARTY_NOTICES.md and licenses/ in the extension package.
+
+PaperMotion is not an official Microsoft, GitHub, OpenAI, Anthropic, or
+Google product. Product names are used only to describe compatibility.

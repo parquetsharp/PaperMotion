@@ -11,12 +11,26 @@ export function visualizationFixture(schema, prompt) {
   if (prompt.includes("FORCE_FAILURE")) throw new Error("Synthetic revision failure");
   const revised = prompt.includes("Use three values");
   if (type === "interactive") return {
-    type, title: "Compare and swap", caption: "Trace a comparison through its successive states.", code: ["compare(values[0], values[1])", "swap if out of order", "return values"],
-    steps: ["Compare", "Swap", "Complete"].map((title, index) => ({ title, explanation: `${title} the two values to put them in ascending order.`, line: index + 1, variables: [{ name: "index", value: String(index) }], items: [
-      { id: "left", label: "First", value: index === 0 ? "2" : "1", column: 0, row: 0, state: index === 2 ? "complete" : "active" },
-      { id: "right", label: "Second", value: index === 0 ? "1" : "2", column: 1, row: 0, state: "neutral" },
-      ...(revised ? [{ id: "third", label: "Third", value: "3", column: 2, row: 0, state: "complete" }] : []),
-    ], links: [{ from: "left", to: "right", label: "compare" }] })),
+    type, mode: "simulation", title: "Compare and swap", caption: "Execute insertion sort with the supplied values.", code: ["compare adjacent values", "swap if out of order", "return values"],
+    inputs: [
+      { name: "values", label: "Values", kind: "number-array", defaultValue: revised ? "[2,1,3]" : "[2,1]", minimum: -100, maximum: 100, integer: true, minItems: 0, maxItems: 16, options: [] },
+      { name: "descending", label: "Descending", kind: "boolean", defaultValue: "false", minimum: 0, maximum: 1, integer: true, minItems: 0, maxItems: 1, options: [] },
+    ],
+    simulation_code: `const values = input.values.slice();
+      function snapshot(title, line) {
+        emit({title, explanation: title + ' the values using adjacent comparisons and swaps.', line,
+          variables: [{name:'result',value:JSON.stringify(values)}],
+          items: values.length ? values.map((value,index)=>({id:'value'+index,label:['First','Second','Third'][index] || 'Value '+index,value:String(value),column:index%4,row:Math.floor(index/4),state:title==='Complete'?'complete':'active'})) : [{id:'empty',label:'Empty input',value:'[]',column:0,row:0,state:'complete'}], links:[]});
+      }
+      snapshot('Compare',1);
+      for(let index=1;index<values.length;index++){
+        let position=index;
+        while(position>0 && (input.descending ? values[position-1]<values[position] : values[position-1]>values[position])) {
+          [values[position-1],values[position]]=[values[position],values[position-1]];
+          position--; snapshot('Swap',2);
+        }
+      }
+      snapshot('Complete',3);`,
   };
   if (type === "2d-anim") return { type, title: "Moving value", caption: "A value moves across the diagram over time.", setup_code: "return { draw: function(ctx,width,height,time,dt) { ctx.fillStyle='#fafafa'; ctx.fillRect(0,0,width,height); ctx.fillStyle='#0284c7'; ctx.fillRect(20+(Math.sin(time*2)+1)*(width-100)/2,height/2,50,50); ctx.fillStyle='#222222'; ctx.font='16px sans-serif'; ctx.fillText('Moving value',20,35); } };" };
   if (type === "3d") return { type, title: "Rotating cube", caption: "Inspect the cube by dragging to rotate it.", setup_code: "camera.position.set(0,1,4); scene.add(new THREE.AmbientLight(0xffffff,2)); const mesh=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),new THREE.MeshStandardMaterial({color:0x0284c7})); group.add(mesh); return {update:function(t){mesh.rotation.x=t*0.4;}};" };
@@ -25,7 +39,7 @@ export function visualizationFixture(schema, prompt) {
   return { type: "2d-text", title: "Momentum source", caption: "Definition from the source document.", body_markdown: "Momentum equals mass multiplied by velocity.", citations: [] };
 }
 
-export async function checkVisualizations({ context, origin, docId, dataDirectory, output }) {
+export async function checkVisualizations({ context, origin, docId, dataDirectory, output, getModelCalls }) {
   const spec = { type: "formula", title: "Momentum", caption: "Momentum equals mass times velocity.", main_latex: "p=mv", steps: [{ latex: "p=mv", explanation: "Multiply mass by velocity." }] };
   await writeFile(path.join(dataDirectory, "docs", docId, "tags.json"), JSON.stringify({ v: 1, docId, savedAt: Date.now(), activeTagId: "viz-test", pagesAnalyzed: [0], tags: [{ id: "viz-test", page: 0, endX: 120, endY: 130, fontHeight: 12, type: "formula", label: "Momentum", ready: true, generating: false, spec, concept: { type: "formula", label: "Momentum", context: "Momentum equals mass times velocity.", anchor: "Momentum is mass times velocity." } }] }));
   const viewer = await context.newPage();
@@ -47,6 +61,29 @@ export async function checkVisualizations({ context, origin, docId, dataDirector
 
   await revision.getByLabel("Visualization format").selectOption("interactive");
   await revision.getByRole("button", { name: "Generate", exact: true }).click();
+  await expect(viewer.getByTestId("step-title")).toHaveText("Compare");
+  await expect(viewer.getByLabel("Values", { exact: true })).toHaveValue("[2,1]");
+  const requestsBeforeRun = getModelCalls();
+  await viewer.getByLabel("Values", { exact: true }).fill("[4,1,3,2]");
+  await viewer.getByRole("button", { name: "Run simulation", exact: true }).click();
+  await expect(viewer.getByRole("button", { name: "Inspect Value 3" })).toBeVisible();
+  await viewer.getByRole("slider", { name: "Lesson step" }).press("End");
+  await expect(viewer.getByTestId("step-title")).toHaveText("Complete");
+  await viewer.getByRole("button", { name: "Inspect First" }).click();
+  await expect(viewer.getByRole("status").filter({ hasText: "First: 1 (complete)" })).toBeVisible();
+  await viewer.getByLabel("Descending", { exact: true }).check();
+  await viewer.getByRole("button", { name: "Run simulation", exact: true }).click();
+  await expect(viewer.getByRole("button", { name: "Run simulation", exact: true })).toBeEnabled();
+  await viewer.getByRole("slider", { name: "Lesson step" }).press("End");
+  await viewer.getByRole("button", { name: "Inspect First" }).click();
+  await expect(viewer.getByRole("status").filter({ hasText: "First: 4 (complete)" })).toBeVisible();
+  await viewer.getByLabel("Values", { exact: true }).fill("not an array");
+  await viewer.getByRole("button", { name: "Run simulation", exact: true }).click();
+  await expect(viewer.getByRole("alert").filter({ hasText: "Values:" })).toBeVisible();
+  await expect(viewer.getByTestId("step-title")).toHaveText("Complete");
+  assert.equal(getModelCalls(), requestsBeforeRun, "Changing inputs reruns locally without AI calls.");
+  await viewer.getByRole("button", { name: "Reset inputs", exact: true }).click();
+  await expect(viewer.getByLabel("Values", { exact: true })).toHaveValue("[2,1]");
   await expect(viewer.getByTestId("step-title")).toHaveText("Compare");
   await viewer.getByRole("button", { name: "Next step", exact: true }).click();
   await expect(viewer.getByTestId("step-title")).toHaveText("Swap");

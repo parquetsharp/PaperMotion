@@ -43,6 +43,7 @@ test("website PDFs keep authenticated fetches and unsupported sources are not re
 test("sidebar can identify website PDFs before site access is granted", async () => {
   const manifest = JSON.parse(await readFile(new URL("../extension/manifest.json", import.meta.url), "utf8"));
   assert.ok(manifest.permissions.includes("tabs"));
+  assert.deepEqual([...manifest.permissions].sort(), ["sidePanel", "storage", "tabs"]);
   assert.ok(manifest.optional_host_permissions.includes("https://*/*"));
   assert.ok(!manifest.host_permissions.includes("https://*/*"));
   assert.ok(!manifest.host_permissions.includes("<all_urls>"));

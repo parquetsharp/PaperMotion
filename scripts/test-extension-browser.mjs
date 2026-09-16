@@ -10,9 +10,11 @@ import { chromium } from "playwright";
 import { expect } from "playwright/test";
 import { PDFDocument, StandardFonts } from "pdf-lib";
 import { visualizationFixture, checkVisualizations } from "./viz-browser-checks.mjs";
+import { checkSimulationSandbox } from "./simulation-browser-checks.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const useCopilot = process.argv.includes("--copilot");
+const useEdge = process.argv.includes("--edge");
 const output = path.join(root, "scripts", "extension-out");
 await mkdir(output, { recursive: true });
 const temporary = await mkdtemp(path.join(tmpdir(), "papermotion-extension-"));
@@ -83,13 +85,15 @@ try {
   console.log("Test engine started with isolated storage and a synthetic provider.");
   const extension = path.join(root, "extension", "build");
   context = await chromium.launchPersistentContext(path.join(temporary, "profile"), {
-    channel: "chromium",
+    channel: useEdge ? "msedge" : "chromium",
     headless: true,
     args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
     viewport: { width: 380, height: 900 },
   });
   context.setDefaultTimeout(60000);
-  const worker = context.serviceWorkers()[0] ?? await context.waitForEvent("serviceworker");
+  const isPaperMotionWorker = worker => worker.url().endsWith("/background.js") && worker.url().startsWith("chrome-extension://");
+  const worker = context.serviceWorkers().find(isPaperMotionWorker) ?? await context.waitForEvent("serviceworker", { predicate: isPaperMotionWorker });
+  assert.equal(await worker.evaluate(() => chrome.runtime.getManifest().name), "PaperMotion Study Companion");
   const extensionId = new URL(worker.url()).hostname;
   const browserErrors = [];
   async function openPanel() {
@@ -99,6 +103,13 @@ try {
     return nextPanel;
   }
   let panel = await openPanel();
+  async function captureStoreAsset(name) {
+    if (!process.argv.includes("--store-assets")) return;
+    const viewport = panel.viewportSize();
+    await panel.setViewportSize({ width: 1280, height: 800 });
+    await panel.screenshot({ path: path.join(output, `store-${name}.png`) });
+    await panel.setViewportSize(viewport);
+  }
   await panel.getByLabel("Engine address").fill(origin);
   const pairingCreated = context.waitForEvent("page");
   await panel.getByRole("button", { name: "Connect", exact: true }).click();
@@ -123,7 +134,15 @@ try {
     await settingsPage.goto(origin);
     await settingsPage.getByRole("button", { name: "Settings", exact: true }).click();
     await expect(settingsPage.getByLabel("Model Engine")).toHaveValue("copilot");
+    await expect(settingsPage.getByRole("combobox", { name: "Generation model", exact: true }).locator('option[value="account-model"]')).toHaveCount(1);
+    const catalogResponse = await fetch(`${origin}/api/provider/models`);
+    assert.equal(catalogResponse.status, 200);
+    assert.equal(catalogResponse.headers.get("cache-control"), "no-store");
+    assert.equal((await catalogResponse.json()).models.length, 3);
+    assert.equal((await fetch(`${origin}/api/provider/models`, { headers: { origin: "https://evil.example", "sec-fetch-site": "cross-site" } })).status, 403);
+    await settingsPage.getByRole("button", { name: "Enter custom model: Generation model", exact: true }).click();
     await settingsPage.getByLabel("Generation model", { exact: true }).fill("fixture-fast");
+    await settingsPage.getByRole("button", { name: "Enter custom model: Conversation model", exact: true }).click();
     await settingsPage.getByLabel("Conversation model", { exact: true }).fill("fixture-smart");
     await expect.poll(async () => (await (await fetch(`${origin}/api/settings`)).json()).copilotModelSmart).toBe("fixture-smart");
     await settingsPage.reload();
@@ -162,6 +181,33 @@ try {
   assert.equal(modelCalls, 0, "Import alone must not send text to the provider.");
   const initialCache = await worker.evaluate(async () => (await chrome.storage.local.get("documents")).documents);
   const document = Object.values(initialCache)[0];
+  async function checkSourceRecovery() {
+    const docId = document.docId;
+    assert.ok(docId, "Imported document has an ID");
+    await writeFile(path.join(dataDirectory, "docs", docId, "tags.json"), JSON.stringify({ v: 1, docId, savedAt: Date.now(), activeTagId: "source-test", pagesAnalyzed: [0], tags: [{ id: "source-test", page: 0, endX: 120, endY: 130, fontHeight: 12, type: "2d-text", label: "Momentum source", ready: false, generating: false, concept: { type: "2d-text", label: "Momentum source", context: "Momentum equals mass times velocity.", anchor: "Momentum is mass times velocity." } }] }));
+    const generated = await fetch(`${origin}/api/jobs/viz/${docId}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ tagId: "source-test" }) });
+    assert.equal(generated.status, 200);
+    await expect.poll(async () => {
+      const state = await (await fetch(`${origin}/api/tags/${docId}`)).json();
+      const tag = state.file.tags.find(item => item.id === "source-test");
+      if (tag.error) throw new Error(tag.error);
+      return tag.ready;
+    }, { timeout: 120000 }).toBe(true);
+    const sourceViewer = await context.newPage();
+    await sourceViewer.setViewportSize({ width: 1440, height: 1000 });
+    await sourceViewer.goto(`${origin}/viewer/${docId}`);
+    await expect(sourceViewer.locator("article").filter({ hasText: "Momentum equals mass multiplied by velocity." })).toBeVisible();
+    const revision = sourceViewer.getByRole("region", { name: "Visualization revision" });
+    await revision.getByLabel("Visualization format").selectOption("2d-text");
+    const before = modelCalls;
+    await revision.getByRole("button", { name: "Generate", exact: true }).click();
+    await expect.poll(() => modelCalls).toBeGreaterThan(before);
+    await expect(revision.getByRole("button", { name: "Generate", exact: true })).toBeEnabled();
+    await expect(sourceViewer.locator("article").filter({ hasText: "Momentum equals mass multiplied by velocity." })).toBeVisible();
+    await sourceViewer.screenshot({ path: path.join(output, "copilot-source-recovery.png") });
+    await sourceViewer.close();
+    console.log("Source queue and manual generation recover from a tools-request response with original page context and tools still disabled.");
+  }
   await panel.getByLabel("Message", { exact: true }).fill("What is momentum?");
   await panel.getByRole("button", { name: "Send message", exact: true }).click();
   await expect(panel.locator(".message.assistant")).toContainText("mass times velocity", { timeout: 120000 });
@@ -169,6 +215,7 @@ try {
   await panel.getByRole("button", { name: "Send message", exact: true }).click();
   await expect(panel.locator(".message.assistant")).toHaveCount(2);
   await panel.screenshot({ path: path.join(output, "chat-380.png"), fullPage: true });
+  await captureStoreAsset("chat");
   await panel.reload();
   await source.bringToFront();
   await expect(panel.locator(".message.assistant")).toHaveCount(2);
@@ -194,9 +241,11 @@ try {
   }
   await expect(panel.locator(".completion")).toContainText("4 / 4 correct");
   await panel.screenshot({ path: path.join(output, "quiz-380.png"), fullPage: true });
+  await captureStoreAsset("quiz");
   await panel.getByRole("tab", { name: "Concepts", exact: true }).click();
   await panel.getByRole("button", { name: "Generate Concepts" }).click();
   await expect(panel.locator(".concept")).toHaveCount(6, { timeout: 120000 });
+  await captureStoreAsset("concepts");
   for (const width of [280, 380, 720]) {
     await panel.setViewportSize({ width, height: 900 });
     await panel.screenshot({ path: path.join(output, `concepts-${width}.png`), fullPage: true });
@@ -211,11 +260,14 @@ try {
   await panel.screenshot({ path: path.join(output, "quiz-dark-380.png"), fullPage: true });
   console.log("Flashcards, quiz scoring, concepts, reload persistence, and responsive screenshots passed.");
 
+  if (useCopilot) await checkSourceRecovery();
+
+  if (!useEdge) {
   const localFile = path.join(temporary, "Local Mechanics.pdf");
   await writeFile(localFile, pdfBytes);
   const localUrl = pathToFileURL(localFile).href;
   const extensionSettings = await context.newPage();
-  await extensionSettings.goto(`chrome://extensions/?id=${extensionId}`);
+  await extensionSettings.goto(`${useEdge ? "edge" : "chrome"}://extensions/?id=${extensionId}`);
   const developerMode = extensionSettings.locator("#devMode");
   await expect(developerMode).toBeVisible();
   if (await developerMode.getAttribute("aria-pressed") !== "true") await developerMode.click();
@@ -256,6 +308,9 @@ try {
   await panel.screenshot({ path: path.join(output, "local-pdf-380.png"), fullPage: true });
   await extensionSettings.close();
   console.log("Open local PDF import passed without a file picker; browser file-access permission is required.");
+  } else {
+    console.log("MANUAL EDGE GATE: verify Allow access to file URLs off/on; automated control selectors are Chromium-specific.");
+  }
 
   await source.goto(`${fixtureOrigin}/other`);
   await expect(panel.getByRole("heading", { name: "No Document Selected" })).toBeVisible();
@@ -267,7 +322,8 @@ try {
   const viewer = await opened;
   await viewer.waitForURL(`${origin}/viewer/${document.docId}`);
   await viewer.close();
-  if (process.argv.includes("--viz")) await checkVisualizations({ context, origin, docId: document.docId, dataDirectory, output });
+  if (process.argv.includes("--viz")) await checkVisualizations({ context, origin, docId: document.docId, dataDirectory, output, getModelCalls: () => modelCalls });
+  if (process.argv.includes("--viz")) await checkSimulationSandbox(context, origin);
   await pairing.bringToFront();
   await pairing.getByRole("button", { name: "Revoke Access" }).click();
   await expect(pairing.getByRole("status")).toHaveText("Extension access revoked.");

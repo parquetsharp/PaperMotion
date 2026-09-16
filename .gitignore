@@ -17,6 +17,7 @@
 
 # next.js
 /.next/
+/.next-preview/
 /out/
 
 # production
@@ -46,6 +47,7 @@ next-env.d.ts
 
 # electron build output
 /dist-electron/
+/dist-release/
 # staged codex binary per target — fetched on demand by electron-prepare
 /electron/codex-bin/
 # staged gemini, claude, and pi CLI packages

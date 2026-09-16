@@ -486,29 +486,31 @@ export default function ViewerClient({ docId }: { docId: string }) {
       {/* Top tab bar — Upload + Library pinned on the left, then the
           open-document tab (acts as the active "window"). Clicking
           Upload or Library navigates away, closing this doc tab. */}
-      <div className="tab-bar tab-bar--fused shrink-0 overflow-x-auto">
-        <TooltipChip tip="Upload a new PDF.">
-          <Link href="/" aria-label="Upload" className="tab-item">
-            <Upload className="h-3.5 w-3.5 text-[var(--ink-400)]" />
-            <span>Upload</span>
-          </Link>
-        </TooltipChip>
-        <TooltipChip tip="Your library of opened PDFs.">
-          <Link href="/library" aria-label="Open library" className="tab-item">
-            <BookOpen className="h-3.5 w-3.5 text-[var(--ink-400)]" />
-            <span>Library</span>
-          </Link>
-        </TooltipChip>
-        <div className="tab-item" data-active="true">
-          <FileText className="h-3.5 w-3.5 text-[var(--accent-600)]" />
-          <span className="max-w-[180px] truncate">{truncated}</span>
-          {!autoGenerate && (
-            <span className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9.5px] font-medium uppercase tracking-wider text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
-              <MousePointerClick className="h-2.5 w-2.5" /> manual
-            </span>
-          )}
+      <div className="tab-bar tab-bar--fused shrink-0 flex-wrap overflow-visible sm:flex-nowrap">
+        <div className="flex w-full min-w-0 items-center gap-0.5 overflow-x-auto sm:w-auto sm:flex-1" aria-label="Document navigation">
+          <TooltipChip tip="Upload a new PDF.">
+            <Link href="/" aria-label="Upload" className="tab-item">
+              <Upload className="h-3.5 w-3.5 text-[var(--ink-400)]" />
+              <span>Upload</span>
+            </Link>
+          </TooltipChip>
+          <TooltipChip tip="Your library of opened PDFs.">
+            <Link href="/library" aria-label="Open library" className="tab-item">
+              <BookOpen className="h-3.5 w-3.5 text-[var(--ink-400)]" />
+              <span>Library</span>
+            </Link>
+          </TooltipChip>
+          <div className="tab-item" data-active="true">
+            <FileText className="h-3.5 w-3.5 text-[var(--accent-600)]" />
+            <span className="max-w-[180px] truncate">{truncated}</span>
+            {!autoGenerate && (
+              <span className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9.5px] font-medium uppercase tracking-wider text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
+                <MousePointerClick className="h-2.5 w-2.5" /> manual
+              </span>
+            )}
+          </div>
         </div>
-        <div className="ml-auto flex items-center gap-2 pr-1">
+        <div className="ml-auto flex shrink-0 items-center gap-2 pr-1">
           <KGStatusBadge docId={docId} />
           <TagsChip
             pagesDone={doneCount}

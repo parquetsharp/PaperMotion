@@ -50,6 +50,10 @@ For animation controls, step-by-step lessons, and chat-driven render corrections
 - **Extension update:** Rebuild with `npm run extension:build`, reload it on the browser's extensions page, and reopen the sidebar.
 - **Visualizations:** Model-generated JavaScript is not executed inside the extension. Use the full web viewer; the extension retains the standard Manifest V3 script restrictions.
 
+## Edge Add-ons candidate
+
+Store preparation is documented in [release/edge/READINESS.md](../release/edge/READINESS.md). The release ZIP includes the upstream Apache license, attribution/modification notices, and license texts for the actual bundled dependencies. `npm run release:edge` prepares artifacts only; no account creation or submission occurs. The publisher must resolve the documented consent, transport, generated-code, installation, and reviewer-access gates first.
+
 ## Verification
 
 Run from the repository root with dependencies and the Playwright Chromium browser already installed:

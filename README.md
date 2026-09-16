@@ -43,19 +43,31 @@ With dependencies installed, run `npm run extension:build`, then load `extension
 
 See [extension/README.md](extension/README.md) for installation, permissions, limitations, and verification commands. Managed browsers may require administrator approval to install an unpacked extension.
 
+## Edge release preparation
+
+Run `npm run release:edge` with dependencies already installed to create versioned extension and companion-source ZIPs, license inventories, checksums, and submission drafts under `dist-release/edge/0.1.0`. The package verifier checks every archived file. `npm run release:edge:verify` additionally extracts the source package and tests the no-download prerequisite path.
+
+This prepares a candidate; it does not publish, sign, register a developer account, or imply certification. Read [release/edge/READINESS.md](release/edge/READINESS.md) and [release/edge/SECURITY-REVIEW.md](release/edge/SECURITY-REVIEW.md). Supply real publisher details and public URLs in [release/edge/release.json](release/edge/release.json), approve the privacy policy, resolve security and consent gates, and complete clean-machine and store-ID testing before submission. `npm run release:edge:ready` fails while required fields or confirmations remain incomplete.
+
+The companion source package includes a Windows launcher with explicit dependency installation; it is not a signed, self-contained installer. See [release/companion/START-HERE.md](release/companion/START-HERE.md). The source build and AI services can require network access. No registry or organization policy is bypassed.
+
 ## Interactive learning and revisions
 
 In the full viewer, select a concept tag. The visualization controls offer **Animation**, **Step by Step**, **Formula**, **3D Model**, **Plot**, and **Source**. Choose a format and click **Generate**. In manual mode, selecting an ungenerated tag no longer starts a request before you choose its format; automatic generation remains available in Settings.
 
 - **Animation** is a live Canvas render, not a GIF. Pause, resume, restart, or change its playback speed.
-- **Step by Step** generates a worked example with a diagram, variables, and highlighted pseudocode. Use previous/next, the timeline slider, or playback to inspect each state. Click a diagram item to inspect its value. These are generated snapshots, not a general-purpose algorithm interpreter; request different inputs or examples through feedback.
+- **Step by Step** generates an executable algorithm simulator with editable inputs (numbers, numeric arrays, switches, and option sets). Change inputs and click **Run simulation** to compute a fresh execution trace locally, without another AI request. Inspect the computed diagram states, variables, and highlighted pseudocode with previous/next, the timeline, or playback. **Reset inputs** restores the generated defaults. Invalid inputs or failed runs preserve the previous trace, marked as a previous run. Inputs reset to defaults when the page reloads.
 - **Discuss and revise visualization** opens a per-concept feedback panel. For example: "The formula should multiply by velocity", "Show the allocation one block at a time", or "The 3D structure is missing a layer". The next request includes the current render, recent applied feedback, and source-page context.
 - The current result stays visible while a revision runs. A failed revision preserves it. Feedback and results survive reloads; **Undo last revision** restores a saved version without another AI call. Up to five prior renders and twenty feedback entries are retained per concept.
 - Narrow screens provide **Document** and **Study** views instead of squeezing both panes side by side. The Edge/Chrome sidebar's **Open interactive viewer** button opens this experience.
 
 Generation and revisions use the selected provider and consume its allowance. Structural and code-syntax validation cannot guarantee factual or mathematical correctness; check the source and use feedback to correct mistakes. Ordinary document Chat remains separate from the visualization feedback panel.
 
-Checks: `npm run test:viz-edit` covers lesson structure, prompt context, camera fitting, revision persistence, undo, and conflicts. `npm run test:viz-browser` uses a synthetic provider to exercise playback, feedback, failure preservation, reloads, and desktop/mobile Canvas and 3D output. To exercise the same workflow through the Copilot fixture, run `node scripts/test-extension-browser.mjs --copilot --viz` after building the extension.
+Previously saved snapshot lessons remain viewable. Select **Step by Step** and **Generate** again to replace one with a simulator; no conversion happens silently. The generated algorithm can be revised through the existing feedback panel. Execution is limited to 500 steps, a bounded trace payload, and approximately 1.5 seconds in a worker inside a sandboxed opaque-origin frame. CSP blocks network access; generated code has no app DOM or storage access. Runs can be cancelled and do not execute on the server. Worker isolation does not provide a hard memory quota or prove algorithm correctness; use small inputs and verify important results against the source.
+
+For an update while an existing server is running, set `GETIT_ISOLATED_BUILD=1` for both the build and start commands to use `.next-preview` instead of overwriting `.next`. Do not run two servers against the same data directory while either is writing; use a separate `GETIT_DATA_DIR` for a concurrent preview, or stop the old server once its jobs finish.
+
+Checks: `npm run test:simulation` covers input validation, recomputation, and worker trace limits. `npm run test:viz-edit` covers lesson structure, prompt context, camera fitting, revision persistence, undo, and conflicts. `npm run test:viz-browser` uses a synthetic provider to exercise input changes without AI calls, playback, feedback, failure preservation, reloads, desktop/mobile rendering, and browser sandbox timeouts, cancellation, network blocking, and storage isolation. To exercise the same workflow through the Copilot fixture, run `node scripts/test-extension-browser.mjs --copilot --viz` after building the extension. The optional `npm run test:simulation:live` check uses real Copilot allowance to generate a simulator and verifies its algorithm with several synthetic inputs in the browser sandbox.
 
 ## GitHub Copilot
 
@@ -63,20 +75,45 @@ GitHub Copilot is available as a model engine for the browser app and its extens
 
 1. Install the official [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/install-copilot-cli) using your organization's approved software source, if it is not already installed.
 2. Run `copilot login` in your terminal and complete GitHub's sign-in flow. Your account and organization must allow Copilot CLI access; VS Code sign-in alone does not guarantee this.
-3. Start the local engine, open **Settings**, and select **GitHub Copilot** under **Model Engine**. Leave the generation and conversation models at `auto`, or enter model IDs supported by your Copilot account.
+3. Start the local engine, open **Settings**, and select **GitHub Copilot** under **Model Engine**. Choose separate **Generation model** and **Conversation model** options from your account's model list, or leave **Auto (Copilot chooses)** selected. Use the pencil button to enter another model ID; existing custom IDs remain editable and are not overwritten when Settings opens.
 4. Retry your study action. Start a new chat when switching from a different provider; existing documents and study materials remain saved.
 
 The API-key setup and `check:api` command above apply to BYOK, not Copilot. The example's third-party API URL is not GitHub Copilot's authentication endpoint.
+
+The model dropdown loads a live account-specific catalog from `GET /api/provider/models` when Copilot Settings opens. The server starts a temporary metadata-only Copilot CLI process, checks its existing authentication, and calls `models.list` over its JSON-RPC interface. No credentials are returned to the browser, no PDF is sent, and no model inference is requested. The endpoint shares simultaneous lookups but does not retain completed results; HTTP responses are `no-store`. Use the refresh icon after switching CLI accounts or changing organization policy. Explicitly unavailable models are disabled in the list. Discovery errors show a retryable message while Auto and custom-ID entry remain available; saved selections are never silently replaced. Actual access and costs still depend on your account, organization policy, and CLI version. The regular same-origin API restrictions apply; the extension gateway does not expose account-model discovery.
+
+Model changes apply after Settings saves them, to requests launched subsequently. In-flight Copilot calls, including their schema-correction turn, keep the model selected when they started. Existing visualizations are not regenerated automatically. The Conversation model applies to the next chat turn, not one already running.
 
 PaperMotion invokes the real CLI directly, skipping VS Code installation bootstrappers and disabling automatic CLI updates. If the engine cannot find it, set `COPILOT_CLI_PATH` to the real executable or the installed npm package's JavaScript entry point and restart the engine. `GETIT_DEFAULT_PROVIDER=copilot`, `COPILOT_MODEL_FAST`, and `COPILOT_MODEL_SMART` provide optional defaults; saved Settings take precedence.
 
 Study requests send relevant document text to GitHub Copilot and consume your plan's allowance. Organization restrictions remain in effect. Model tools are disabled, built-in MCP servers are disabled, and prompts run outside your project working directory without project instructions. This is not an OS-level sandbox. Copilot CLI manages its own credentials and native session storage; PaperMotion never reads VS Code tokens. The Account panel verifies connectivity on successful study requests rather than assuming an installed CLI is signed in. Token/billing totals are not currently exposed for this provider.
 
-Copilot responses are validated against each study tool's schema. A schema mismatch triggers at most one correction turn in the same session, with the failed fields and limits supplied to the model. This extra turn consumes Copilot allowance. Invalid corrected output is rejected with field-level diagnostics; authentication, policy, and network errors are not retried by this correction step.
+Copilot responses are validated against each study tool's schema. A schema mismatch or a response requesting tools triggers at most one correction turn in the same session and with the same model. Both cases share that one-turn budget, and tools remain disabled throughout. This extra turn consumes Copilot allowance. Invalid corrected output is rejected; authentication, policy, and network errors are not retried by this correction step.
 
-Run `npm run test:copilot` for adapter checks and `npm run test:copilot:browser` for the extension workflow using a local CLI fixture, including correction of an oversized graph overview. The fixture tests do not authenticate your account or consume Copilot quota. Live use still requires `copilot login`.
+For **Source** concepts, Copilot summarizes the supplied document context rather than browsing. Background Source generation includes the extracted source page, as manual generation/revisions already do. Prompts require quotes to come from supplied text, prohibit invented references, and allow an empty citations list when no source URLs are supplied. The result must disclose that external sources were not verified. These are generation instructions, not an independent fact-checker; review important quotations against the PDF. If a Source tag failed before this fix, retry that tag; completed visualizations are not automatically changed.
+
+**Source responses always use English**, regardless of the PDF or feedback language, for all providers. This includes titles, captions, body text, and citation descriptions. Non-English passages are paraphrased in English rather than copied or presented as verbatim translated quotations; URLs, identifiers, and proper names are preserved. The rule applies to new generation, revisions, and repairs. Regenerate an existing saved Source response to apply it; other visualization categories continue to follow the source language.
+
+Run `npm run test:copilot` for adapter checks, `npm run test:copilot-models` for discovery/protocol/API checks, and `npm run test:copilot:browser` for the extension workflow using a local CLI fixture, including model discovery and correction of an oversized graph overview. The fixture tests do not authenticate your account or consume Copilot quota. Live use still requires `copilot login`.
 
 ## Configuration and saved work
+
+### Parallel requests
+
+Open **Settings > Parallel requests** to optionally increase background concurrency for any AI provider:
+
+| Setting | Default | Range | Scope |
+| --- | --- | --- | --- |
+| Detection batches | 3 | 1-8 | Concurrent concept-detection calls per document, up to 5 pages per call |
+| Visualizations | 4 | 1-16 | Concurrent background visualization-generation calls per document |
+
+Values save automatically and survive restarts. The reset icon restores 3 and 4. Existing installations keep these defaults until changed. Saving a higher limit immediately wakes active queues and fills their available slots. Lowering a limit never cancels running requests; the queue waits until it drops below the new limit before scheduling replacements. Detection and visualization can overlap.
+
+Increasing a running queue from **3 to 5** launches up to **two additional requests as soon as the setting is saved**, without waiting for the original three to finish, provided enough work is queued and the queue has not stopped on an account/provider error. Each active document uses its own limit. Completed visualizations and unstarted/stopped queues are not regenerated or restarted. These are concurrent requests, not subagent threads.
+
+These are per-document limits, not an account-wide cap. Chat, knowledge-graph builds, manual revisions, and Step by Step requests use separate paths. Higher values can increase memory use, consumption rate, and provider throttling; they do not raise your provider quota or guarantee faster results. Try detection **4** and visualizations **8** first, then adjust for your provider and machine. No subagent delegation is enabled.
+
+The settings API accepts optional integer fields `detectionConcurrency` and `vizConcurrency` in `POST /api/settings`; omitted fields stay unchanged and out-of-range values return HTTP 400. Regression checks: `npm run test:job-concurrency`, `npm run test:job-wakeup:http`, and `npm run test:viewer-settings`.
 
 | Setting | Purpose |
 | --- | --- |

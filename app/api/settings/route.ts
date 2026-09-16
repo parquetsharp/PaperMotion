@@ -8,6 +8,8 @@
 
 import { NextResponse } from "next/server";
 import { loadSettings, saveSettings, type AppSettings } from "@/lib/settings-store";
+import { CONCURRENCY_LIMITS, normalizeConcurrency, type ConcurrencyField } from "@/lib/job-concurrency";
+import { wakeJobQueues } from "@/lib/job-wakeups";
 
 export const runtime = "nodejs";
 
@@ -34,8 +36,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "invalid json" }, { status: 400 });
   }
   const b = (body && typeof body === "object" ? body : {}) as Partial<AppSettings>;
+  for (const field of Object.keys(CONCURRENCY_LIMITS) as ConcurrencyField[]) {
+    if (!(field in b)) continue;
+    const value = b[field];
+    const maximum = CONCURRENCY_LIMITS[field].max;
+    if (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > maximum) {
+      return NextResponse.json({ error: `${field} must be an integer between 1 and ${maximum}.` }, { status: 400 });
+    }
+  }
   const current = loadSettings();
   const next: AppSettings = {
+    detectionConcurrency: b.detectionConcurrency ?? current.detectionConcurrency,
+    vizConcurrency: b.vizConcurrency ?? current.vizConcurrency,
     provider:
       ["codex", "gemini", "claude", "pi", "copilot"].includes(b.provider as string)
         ? b.provider!
@@ -73,5 +85,8 @@ export async function POST(req: Request) {
       ? b.theme
       : current.theme;
   saveSettings(next);
+  for (const field of Object.keys(CONCURRENCY_LIMITS) as ConcurrencyField[]) {
+    if (normalizeConcurrency(next[field], field) > normalizeConcurrency(current[field], field)) wakeJobQueues(field);
+  }
   return NextResponse.json(publicSettings(next), { headers: { "Cache-Control": "no-store" } });
 }

@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "description": "Study PDFs with your local PaperMotion engine: chat, flashcards, quizzes, and concepts.",
   "minimum_chrome_version": "116",
-  "permissions": ["sidePanel", "storage", "activeTab", "tabs"],
+  "permissions": ["sidePanel", "storage", "tabs"],
   "host_permissions": ["http://127.0.0.1/*", "http://localhost/*", "file:///*"],
   "optional_host_permissions": ["https://*/*", "http://*/*"],
   "background": { "service_worker": "background.js", "type": "module" },

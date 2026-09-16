@@ -2,6 +2,10 @@ async function main() {
   const { default: assert } = await import("node:assert/strict");
   const fs = await import("node:fs/promises");
   const args = process.argv.slice(2);
+  if (args.includes("--headless")) {
+    await import("./copilot-models.mjs");
+    return;
+  }
   assert.ok(!args.some(value => value === "-p" || value === "--prompt" || value.startsWith("--prompt=")), "Copilot ignores stdin when an explicit prompt is present.");
   assert.ok(args.includes("--available-tools="));
   assert.ok(args.includes("--no-auto-update"));
@@ -15,6 +19,20 @@ async function main() {
   let history = [];
   if (args.some(value => value.startsWith("--resume="))) history = JSON.parse(await fs.readFile("fixture-session.json", "utf8"));
   history.push(prompt);
+  if (schema.properties?.type?.const === "2d-text") {
+    assert.match(prompt, /No tools are available/);
+    assert.match(prompt, /Web search is unavailable/);
+    if (history.length === 1) {
+      assert.match(prompt, /SOURCE PAGE 1:/);
+      assert.match(prompt, /Mass measures inertia/);
+      await fs.writeFile("fixture-session.json", JSON.stringify(history));
+      process.stdout.write(JSON.stringify({ type: "assistant.message", data: { content: "", toolRequests: [{ name: "web_search", arguments: {} }] } }) + "\n");
+      process.stdout.write(JSON.stringify({ type: "result" }) + "\n");
+      return;
+    }
+    assert.equal(history.length, 2);
+    assert.match(prompt, /Answer from the supplied context without tools/);
+  }
   const endpoint = new URL(process.env.PAPERMOTION_COPILOT_FIXTURE_URL);
   assert.equal(endpoint.hostname, "127.0.0.1");
   const response = await fetch(endpoint, {

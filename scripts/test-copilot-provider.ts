@@ -9,7 +9,8 @@ import { CopilotProvider } from "../lib/providers/copilot-provider";
 import type { runCliBinary } from "../lib/providers/cli-runner";
 import { classifyCodexError } from "../lib/codex-errors";
 import { kgBuildSchema, flashcardsGenerateSchema } from "../lib/schemas-kg";
-import { detectionBatchSchema } from "../lib/schemas";
+import { detectionBatchSchema, vizSchemaFor } from "../lib/schemas";
+import { buildVizPrompt } from "../lib/agents/viz";
 
 function cliOutput(content: string) {
   return [
@@ -83,6 +84,34 @@ test("Copilot generation uses stdin, selected models, and owned resumable sessio
     assert.equal(calls.length, 3);
     assert.equal((await readdir(directory)).filter(name => name.endsWith(".json")).length, 1);
   } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test("model changes apply to new requests while in-flight generation keeps its selected model", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "copilot-model-change-"));
+  let model = "old-model";
+  const selected: string[] = [];
+  let finishFirst = () => {};
+  let firstStarted = () => {};
+  const firstGate = new Promise<void>(resolve => { finishFirst = resolve; });
+  const started = new Promise<void>(resolve => { firstStarted = resolve; });
+  const provider = new CopilotProvider({
+    directory, resolveBinary: () => "fixture", settings: () => ({ copilotModelFast: model }),
+    run: async (_binary, args) => {
+      selected.push(args[args.indexOf("--model") + 1]);
+      if (selected.length === 1) { firstStarted(); await firstGate; }
+      return { stdout: cliOutput('{"reply":"ok"}'), stderr: "", exitCode: 0 };
+    },
+  });
+  try {
+    const first = provider.runJson("First", { type: "object" });
+    await started;
+    model = "new-model";
+    await provider.runJson("Second", { type: "object" });
+    assert.deepEqual(selected, ["old-model", "new-model"]);
+    finishFirst();
+    await first;
+    assert.deepEqual(selected, ["old-model", "new-model"]);
+  } finally { finishFirst(); await rm(directory, { recursive: true, force: true }); }
 });
 
 test("Copilot failure and cancellation do not persist a successful chat", async () => {
@@ -196,4 +225,41 @@ test("Copilot JSONL preserves long strings and rejects truncated or failed strea
   assert.throws(() => parseCopilotOutput(cliOutput('{"concepts":[]}') + '\n{"type":"session.error"}', detectionBatchSchema), /reported an error/);
   assert.throws(() => parseCopilotOutput('not JSONL', {}), /unreadable response stream/);
   assert.throws(() => parseCopilotOutput('{"type":"assistant.message","data":{"content":"{}","toolRequests":[{}]}}\n{"type":"result"}', {}), /requested tools/);
+});
+
+test("Source generation corrects a tool request once without enabling tools or inventing citations", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "copilot-source-tools-"));
+  const calls: Parameters<typeof runCliBinary>[] = [];
+  const toolOutput = JSON.stringify({ type: "assistant.message", data: { content: "", toolRequests: [{ name: "web_search", arguments: { query: "PRIVATE_QUERY" } }] } }) + '\n{"type":"result"}';
+  const source = { type: "2d-text", title: "Momentum source", caption: "A summary of the supplied document.", body_markdown: "The supplied context describes momentum as mass times velocity. External sources were not verified.", citations: [] };
+  const schema = vizSchemaFor("2d-text");
+  const prompt = buildVizPrompt({ type: "2d-text", label: "Momentum", context: "Momentum equals mass times velocity." });
+  try {
+    const provider = new CopilotProvider({ directory, resolveBinary: () => "fixture", settings: () => ({ copilotModelFast: "chosen-model" }), run: async (...args) => {
+      calls.push(args);
+      assert.ok(args[1].includes("--available-tools="));
+      assert.ok(args[1].includes("--deny-tool=read,write,shell,url,memory"));
+      assert.match(args[2]?.stdin ?? "", /No tools are available/);
+      assert.match(args[2]?.stdin ?? "", /Web search is unavailable/);
+      assert.match(args[2]?.stdin ?? "", /leave citations empty/);
+      return { stdout: calls.length === 1 ? toolOutput : cliOutput(JSON.stringify(source)), stderr: "", exitCode: 0 };
+    } });
+    assert.deepEqual((await provider.runJson(prompt, schema, { webSearch: true })).data, source);
+    assert.equal(calls.length, 2);
+    const sessionId = calls[0][1].find(arg => arg.startsWith("--session-id="))!.split("=")[1];
+    assert.ok(calls[1][1].includes(`--resume=${sessionId}`));
+    assert.ok(calls[1][1].includes("chosen-model"));
+    assert.equal(calls[1][2]?.cwd, calls[0][2]?.cwd);
+    assert.match(calls[1][2]?.stdin ?? "", /Answer from the supplied context without tools/);
+    assert.doesNotMatch(calls[1][2]?.stdin ?? "", /PRIVATE_QUERY/);
+    assert.equal((await readdir(path.join(directory, "work"))).length, 0);
+    let attempts = 0;
+    const persistent = new CopilotProvider({ directory, resolveBinary: () => "fixture", run: async () => { attempts++; return { stdout: toolOutput, stderr: "", exitCode: 0 }; } });
+    await assert.rejects(persistent.runJson(prompt, schema, { webSearch: true }), /requested tools/);
+    assert.equal(attempts, 2);
+    attempts = 0;
+    const mixed = new CopilotProvider({ directory, resolveBinary: () => "fixture", run: async () => { attempts++; return { stdout: attempts === 1 ? toolOutput : cliOutput('{}'), stderr: "", exitCode: 0 }; } });
+    await assert.rejects(mixed.runJson(prompt, schema, { webSearch: true }), CopilotFormatError);
+    assert.equal(attempts, 2, "Tool and schema corrections share one retry budget");
+  } finally { await rm(directory, { recursive: true, force: true }); }
 });
