@@ -36,6 +36,8 @@
     "test:copilot-models": "tsx --test scripts/test-copilot-models.ts",
     "test:viz-edit": "node --conditions=import --import tsx --test scripts/test-viz-edit.ts scripts/test-viz-storage.ts",
     "test:manual-viz": "tsx --test scripts/test-manual-viz.ts",
+    "test:evidence": "tsx --test scripts/test-evidence.ts",
+    "test:evidence:browser": "node scripts/test-extension-browser.mjs --copilot --evidence --edge",
     "test:manual-viz:browser": "node scripts/test-extension-browser.mjs --copilot --manual-selection --edge",
     "test:viewer-settings": "node scripts/test-viewer-settings.mjs",
     "test:job-concurrency": "node --conditions=import --import tsx --test scripts/test-job-concurrency.ts",

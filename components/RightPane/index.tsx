@@ -40,6 +40,8 @@ import FormulaView from "@/components/Visualizer/FormulaView";
 import GraphView from "@/components/Visualizer/GraphView";
 import InteractiveView from "@/components/Visualizer/InteractiveView";
 import RevisionPanel from "@/components/Visualizer/RevisionPanel";
+import EvidenceView from "@/components/Visualizer/EvidenceView";
+import type { EvidenceHighlight } from "@/lib/evidence-types";
 import type { PersistedTagServer } from "@/lib/tags-store";
 import VizLegendIcon from "@/components/Visualizer/VizLegendIcon";
 import {
@@ -116,6 +118,8 @@ type Props = {
     tag?: PersistedTagServer;
     onUpdate?: (tag: PersistedTagServer) => void;
     onDelete?: (tagId: string) => void;
+    onShowPassage?: (highlight: EvidenceHighlight) => Promise<void>;
+    onClearPassage?: () => void;
     spec: VizSpec | null;
     loading: boolean;
     emptyHint?: string;
@@ -141,6 +145,7 @@ export default function RightPane({ docId, mode, onModeChange, visualizer, provi
 
       <div className="relative min-h-0 flex-1 bg-[var(--surface-raised)]">
         {mode === "visualizer" && (
+          <EvidenceView key={`${visualizer.tag?.id}-${visualizer.tag?.revision ?? 0}`} evidence={visualizer.spec && "evidence" in visualizer.spec ? visualizer.spec.evidence : undefined} onShowPassage={visualizer.onShowPassage} onClearPassage={visualizer.onClearPassage}>
           <VisualizerBody
             key={visualizer.tag?.id}
             spec={visualizer.spec}
@@ -150,6 +155,7 @@ export default function RightPane({ docId, mode, onModeChange, visualizer, provi
             onRuntimeError={visualizer.onRuntimeError}
             providerLabel={providerLabel}
           />
+          </EvidenceView>
         )}
         {mode === "graph" && (
           <KnowledgeGraphView

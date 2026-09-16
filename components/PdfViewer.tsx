@@ -8,12 +8,15 @@ import {
   Minus,
   ChevronLeft,
   ChevronRight,
+  X,
+  ArrowLeft,
 } from "lucide-react";
 import type { VizType } from "@/lib/schemas";
 import { VIZ_TYPE_META, vizTypeStyle } from "@/components/Visualizer/viz-meta";
 import { getDocument, GlobalWorkerOptions, TextLayer } from "pdfjs-dist/legacy/build/pdf.mjs";
 import type { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
 import PdfSelectionTools, { type PdfSelectionRequest } from "./PdfSelectionTools";
+import type { EvidenceHighlight } from "@/lib/evidence-types";
 
 if (typeof window !== "undefined") {
   GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
@@ -45,6 +48,9 @@ type Props = {
   activeTagId: string | null;
   onTagClick: (tagId: string) => void;
   onGenerateSelection?: (selection: PdfSelectionRequest) => Promise<void>;
+  evidenceHighlight?: EvidenceHighlight | null;
+  onClearEvidence?: () => void;
+  onReturnToEvidence?: () => void;
   detecting?: boolean;
   providerLabel?: string;
 };
@@ -62,6 +68,9 @@ export default function PdfViewer({
   activeTagId,
   onTagClick,
   onGenerateSelection,
+  evidenceHighlight,
+  onClearEvidence,
+  onReturnToEvidence,
   detecting,
   providerLabel,
 }: Props) {
@@ -119,12 +128,17 @@ export default function PdfViewer({
 
   // When the active tag changes, scroll to the page that contains it.
   useEffect(() => {
-    if (!activeTagId || !scrollRef.current) return;
+    if (!activeTagId || !scrollRef.current || evidenceHighlight) return;
     const tag = tags.find((t) => t.id === activeTagId);
     if (!tag) return;
     const el = scrollRef.current.querySelector(`[data-page="${tag.page}"]`) as HTMLElement | null;
     if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [activeTagId, tags]);
+  }, [activeTagId, tags, evidenceHighlight]);
+
+  useEffect(() => {
+    if (!evidenceHighlight || !scrollRef.current) return;
+    scrollRef.current.querySelector(`[data-page="${evidenceHighlight.page}"] [data-evidence-rect]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [evidenceHighlight, containerW, scale]);
 
   // Track which page contains the viewport center so the page indicator
   // stays in sync with manual scrolling.
@@ -210,6 +224,11 @@ export default function PdfViewer({
   return (
     <div className="relative h-full">
       <div ref={scrollRef} className="relative flex h-full flex-col overflow-y-auto bg-[var(--surface-raised)]">
+        {evidenceHighlight && <div role="status" aria-label="PDF evidence highlight" className="sticky top-0 z-30 flex shrink-0 items-center justify-between gap-2 border-b border-[var(--border-subtle)] bg-[var(--tag-amber-bg)] px-3 py-2 text-xs text-[var(--tag-amber-fg)]">
+          <span>Evidence on page {evidenceHighlight.page + 1}</span>
+          <button type="button" onClick={onReturnToEvidence} className="inline-flex items-center gap-1"><ArrowLeft size={13} />Back to visualization</button>
+          <button type="button" aria-label="Clear evidence highlight" title="Clear evidence highlight" onClick={onClearEvidence}><X size={14} /></button>
+        </div>}
           {detecting && (
           <div className="sticky top-0 z-20 flex items-center gap-2 border-b border-[var(--border-subtle)] bg-[var(--surface-raised)]/90 px-4 py-2 text-[12px] text-[var(--ink-500)] backdrop-blur">
             <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--accent-600)]" />
@@ -228,6 +247,7 @@ export default function PdfViewer({
               tags={tags.filter((t) => t.page === i)}
               activeTagId={activeTagId}
               onTagClick={onTagClick}
+              evidenceHighlight={evidenceHighlight?.page === i ? evidenceHighlight : null}
             />
           ))}
         </div>
@@ -365,6 +385,7 @@ function PdfPage({
   tags,
   activeTagId,
   onTagClick,
+  evidenceHighlight,
 }: {
   pdfDoc: PDFDocumentProxy | null;
   pageNumber: number;
@@ -374,6 +395,7 @@ function PdfPage({
   tags: Tag[];
   activeTagId: string | null;
   onTagClick: (id: string) => void;
+  evidenceHighlight?: EvidenceHighlight | null;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const textRef = useRef<HTMLDivElement | null>(null);
@@ -442,6 +464,7 @@ function PdfPage({
     >
       <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
       <div ref={textRef} className="textLayer" data-selection-page={pageNumber - 1} aria-label={`PDF page ${pageNumber} text`} style={{ "--total-scale-factor": scale } as CSSProperties} />
+      {evidenceHighlight && <div aria-label="Supporting passage highlight" className="pointer-events-none absolute inset-0">{evidenceHighlight.rects.map((rect, index) => <div key={index} data-evidence-rect className="absolute border border-[var(--tag-amber-fg)] bg-[var(--tag-amber-bg)] opacity-50" style={{ left: rect.x * scale, top: (pdfHeight - rect.y - rect.height) * scale, width: rect.width * scale, height: rect.height * scale }} />)}</div>}
       {/* Tag overlay layer */}
       <div className="pointer-events-none absolute inset-0">
         {tags.map((t) => (

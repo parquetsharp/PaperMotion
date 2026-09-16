@@ -12,6 +12,7 @@ import { PDFDocument, StandardFonts } from "pdf-lib";
 import { visualizationFixture, checkVisualizations } from "./viz-browser-checks.mjs";
 import { checkSimulationSandbox } from "./simulation-browser-checks.mjs";
 import { checkManualVisualizations } from "./manual-viz-browser-checks.mjs";
+import { checkEvidence } from "./evidence-browser-checks.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const useCopilot = process.argv.includes("--copilot");
@@ -25,6 +26,7 @@ const page = pdf.addPage([595, 842]);
 const font = await pdf.embedFont(StandardFonts.Helvetica);
 page.drawText("Mechanics Study Guide", { x: 45, y: 770, size: 20, font });
 page.drawText(Array.from({ length: 12 }, () => "Momentum is mass times velocity. Force changes momentum.\nEnergy is conserved in an isolated system. Mass measures inertia.").join("\n"), { x: 45, y: 730, size: 12, font, lineHeight: 22 });
+page.drawText("The definition of momentum is mass multiplied by velocity.", { x: 45, y: 150, size: 12, font });
 if (process.argv.includes("--manual-selection")) {
   const secondPage = pdf.addPage([595, 842]);
   secondPage.drawText("Additional mechanics", { x: 45, y: 770, size: 20, font });
@@ -267,6 +269,7 @@ try {
   console.log("Flashcards, quiz scoring, concepts, reload persistence, and responsive screenshots passed.");
 
   if (useCopilot) await checkSourceRecovery();
+  if (process.argv.includes("--evidence")) await checkEvidence({ context, origin, docId: document.docId, output, getModelCalls: () => modelCalls });
   if (useCopilot) {
     const status = await (await fetch(`${origin}/api/provider/status`)).json();
     const usage = status.usage;

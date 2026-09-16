@@ -121,6 +121,7 @@ export type TwoDAnimSpec = {
 };
 
 export type TwoDTextSpec = {
+  evidence?: import("./evidence-types").VisualizationEvidence;
   type: "2d-text";
   title: string;
   caption: string;
@@ -129,6 +130,7 @@ export type TwoDTextSpec = {
 };
 
 export type FormulaSpec = {
+  evidence?: import("./evidence-types").VisualizationEvidence;
   type: "formula";
   title: string;
   caption: string;

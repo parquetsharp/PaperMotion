@@ -6,6 +6,23 @@ import sharp from "sharp";
 import { expect } from "playwright/test";
 
 export function visualizationFixture(schema, prompt) {
+  const spec = visualizationContent(schema, prompt);
+  if (!spec || !schema.properties?.evidence) return spec;
+  const target = spec.type === "formula" ? "main_latex" : spec.type === "interactive" ? "code:1" : "paragraph:1";
+  const page = Number(/===== EVIDENCE PAGE (\d+) =====/.exec(prompt)?.[1] ?? 1);
+  return { ...spec, evidence: [
+    { id: "definition", target, text: "Momentum equals mass multiplied by velocity.", kind: "stated", rationale: "The supplied passage defines momentum.", dependencies: [], sources: [{ page, quote: "The definition of momentum is mass multiplied by velocity." }] },
+    { id: "example", target: spec.type === "formula" ? "step:1" : target, text: "The example uses mass 2 and velocity 3.", kind: "assumption", rationale: "These example inputs are chosen for illustration, not from the paper.", dependencies: [], sources: [] },
+    { id: "result", target: spec.type === "formula" ? "step:1" : target, text: "Example momentum is 6.", kind: "derived", rationale: "Multiply the example mass 2 by velocity 3 using the definition.", dependencies: ["definition", "example"], sources: [] },
+    { id: "unmatched", target, text: "An unsupported fixture statement.", kind: "stated", rationale: "This quotation is intentionally absent.", dependencies: [], sources: [{ page, quote: "This exact sentence does not occur in the source PDF." }] },
+    ...(spec.type === "interactive" ? [
+      { id: "stale-formula", target: "main_latex", text: "A claim left over from the formula.", kind: "stated", rationale: "This target is invalid in a simulator.", dependencies: [], sources: [{ page, quote: "The definition of momentum is mass multiplied by velocity." }] },
+      { id: "bad-line", target: "code:24", text: "A missing code line.", kind: "derived", rationale: "The simulator has only three display lines.", dependencies: [], sources: [] },
+    ] : []),
+  ] };
+}
+
+function visualizationContent(schema, prompt) {
   const type = schema.properties?.type?.const;
   if (!type) return null;
   if (prompt.includes("FORCE_FAILURE")) throw new Error("Synthetic revision failure");
@@ -34,7 +51,7 @@ export function visualizationFixture(schema, prompt) {
   };
   if (type === "2d-anim") return { type, title: "Moving value", caption: "A value moves across the diagram over time.", setup_code: "return { draw: function(ctx,width,height,time,dt) { ctx.fillStyle='#fafafa'; ctx.fillRect(0,0,width,height); ctx.fillStyle='#0284c7'; ctx.fillRect(20+(Math.sin(time*2)+1)*(width-100)/2,height/2,50,50); ctx.fillStyle='#222222'; ctx.font='16px sans-serif'; ctx.fillText('Moving value',20,35); } };" };
   if (type === "3d") return { type, title: "Rotating cube", caption: "Inspect the cube by dragging to rotate it.", setup_code: "camera.position.set(0,1,4); scene.add(new THREE.AmbientLight(0xffffff,2)); const mesh=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),new THREE.MeshStandardMaterial({color:0x0284c7})); group.add(mesh); return {update:function(t){mesh.rotation.x=t*0.4;}};" };
-  if (type === "formula") return { type, title: "Momentum", caption: "Momentum equals mass multiplied by velocity.", main_latex: "p=mv", steps: [{ latex: "p=mv", explanation: "Multiply mass by velocity." }] };
+  if (type === "formula") return { type, title: "Momentum", caption: "Momentum equals mass multiplied by velocity.", main_latex: "M_{2048}=2048(2\\times5120\\times40\\times2)=1{,}677{,}721{,}600\\;\\mathrm{bytes}", steps: [{ latex: "p=mv", explanation: "Multiply mass by velocity." }, { latex: "M=" + "2048+".repeat(45) + "0", explanation: "LongToken".repeat(30) }] };
   if (type === "graph") return { type, title: "Momentum plot", caption: "Momentum increases with velocity.", chart_type: "points", x_label: "velocity", y_label: "momentum", data_json: '{"points":[[0,0],[1,2],[2,4]]}' };
   return { type: "2d-text", title: "Momentum source", caption: "Definition from the source document.", body_markdown: "Momentum equals mass multiplied by velocity.", citations: [] };
 }

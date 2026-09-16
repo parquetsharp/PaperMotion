@@ -72,7 +72,7 @@ test("settings and schedulers honor persisted parallelism without interrupting a
     const requests: string[] = [];
     const runner = mock.method(CopilotProvider.prototype, "runJson", (prompt: string) => {
       requests.push(prompt);
-      return new Promise(resolve => pending.push(() => resolve({ data: prompt.includes("--- PAGES ---") ? { concepts: [] } : formula, usage: null })));
+      return new Promise(resolve => pending.push(() => resolve({ data: prompt.includes("--- PAGES ---") ? { concepts: [] } : { ...formula, evidence: [] }, usage: null })));
     });
     const flush = async () => { for (let turn = 0; turn < 20; turn++) await setImmediate(); };
     try {
@@ -137,7 +137,7 @@ test("settings and schedulers honor persisted parallelism without interrupting a
       const stoppedCalls: Array<{ detection: boolean; resolve: () => void; reject: (error: Error) => void }> = [];
       const stoppedRunner = mock.method(CopilotProvider.prototype, "runJson", (prompt: string) => new Promise((resolve, reject) => {
         const detection = prompt.includes("--- PAGES ---");
-        stoppedCalls.push({ detection, resolve: () => resolve({ data: detection ? { concepts: [] } : formula, usage: null }), reject });
+        stoppedCalls.push({ detection, resolve: () => resolve({ data: detection ? { concepts: [] } : { ...formula, evidence: [] }, usage: null }), reject });
       }));
       const warnings = mock.method(console, "warn", () => {});
       try {

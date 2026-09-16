@@ -31,7 +31,7 @@ test("deleted queued/running tags stay deleted through late results, stale saves
     const runner = mock.method(CopilotProvider.prototype, "runJson", (prompt: string) => {
       calls++;
       if (prompt.includes("--- PAGES ---")) return Promise.resolve({ data: { concepts: [{ ...concept, page: 0 }] }, usage: null });
-      return new Promise(resolve => pending.push(() => resolve({ data: spec, usage: null })));
+      return new Promise(resolve => pending.push(() => resolve({ data: { ...spec, evidence: [] }, usage: null })));
     });
     const flush = async () => { for (let tick = 0; tick < 25; tick++) await setImmediate(); };
     try {

@@ -16,6 +16,7 @@ import {
 
 import PdfViewer, { type Tag } from "@/components/PdfViewer";
 import type { PdfSelectionRequest } from "@/components/PdfSelectionTools";
+import type { EvidenceHighlight } from "@/lib/evidence-types";
 import RightPane, { type RightPaneMode } from "@/components/RightPane";
 import AccountButton from "@/components/AccountButton";
 import SettingsButton, { SETTINGS_EVENT } from "@/components/SettingsButton";
@@ -82,6 +83,8 @@ export default function ViewerClient({ docId }: { docId: string }) {
   const [detectionError, setDetectionError] = useState<string | undefined>();
 
   const [activeTagId, setActiveTagId] = useState<string | null>(null);
+  const [evidenceSelection, setEvidenceSelection] = useState<{ key: string; highlight: EvidenceHighlight } | null>(null);
+  const evidenceJump = useRef(0);
   const deletedTagIds = useRef(new Set<string>());
 
   // Settings (auto-generate, max repair attempts) — start from env-baked
@@ -300,6 +303,20 @@ export default function ViewerClient({ docId }: { docId: string }) {
       meta && (FILENAME_TO_TITLE[meta.filename] || meta.filename.replace(/\.(pdf|md|markdown|mdown|mkd|mdwn)$/i, "")),
     [meta],
   );
+
+  const evidenceKey = `${activeTagId}-${tags.find(tag => tag.id === activeTagId)?.revision ?? 0}`;
+  const evidenceHighlight = evidenceSelection?.key === evidenceKey && rightPaneMode === "visualizer" ? evidenceSelection.highlight : null;
+  function clearEvidencePassage() { evidenceJump.current++; setEvidenceSelection(null); }
+  async function showEvidencePassage(highlight: EvidenceHighlight) {
+    const jumpId = ++evidenceJump.current;
+    const page = meta?.pages.find(item => item.pageIndex === highlight.page);
+    if (highlight.docId !== docId || !page || page.text.slice(highlight.start, highlight.end) !== highlight.quote) throw new Error("The PDF text has changed or this evidence belongs to another document. Generate a new version.");
+    const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(page.text))), byte => byte.toString(16).padStart(2, "0")).join("");
+    if (hash !== highlight.pageHash) throw new Error("The source page has changed. Generate a new version before following this evidence.");
+    if (jumpId !== evidenceJump.current) return;
+    setEvidenceSelection({ key: evidenceKey, highlight });
+    setMobilePane("document");
+  }
 
   // Auto-select the first ready tag when nothing is selected yet.
   useEffect(() => {
@@ -562,6 +579,9 @@ export default function ViewerClient({ docId }: { docId: string }) {
             activeTagId={activeTagId}
             onTagClick={handleTagClick}
             onGenerateSelection={handleGenerateSelection}
+            evidenceHighlight={evidenceHighlight}
+            onClearEvidence={clearEvidencePassage}
+            onReturnToEvidence={() => setMobilePane("study")}
             detecting={detecting}
             providerLabel={PROVIDER_LABELS[provider]}
           />
@@ -574,6 +594,8 @@ export default function ViewerClient({ docId }: { docId: string }) {
             providerLabel={PROVIDER_LABELS[provider]}
             visualizer={{
               tag: activeTag ?? undefined,
+              onShowPassage: showEvidencePassage,
+              onClearPassage: clearEvidencePassage,
               onUpdate: updated => setTags(previous => previous.map(tag => tag.id === updated.id ? updated : tag)),
               onDelete: id => {
                 deletedTagIds.current.add(id);

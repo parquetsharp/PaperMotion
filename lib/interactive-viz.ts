@@ -26,7 +26,7 @@ export const interactiveVizSchema = z.object({
   steps: z.array(interactiveStepSchema).min(1).max(500),
 }).strict();
 
-export type InteractiveSpec = z.infer<typeof interactiveVizSchema>;
+export type InteractiveSpec = z.infer<typeof interactiveVizSchema> & { evidence?: import("./evidence-types").VisualizationEvidence };
 
 export const simulationSchema = z.object({
   type: z.literal("interactive"),
@@ -49,7 +49,7 @@ export const simulationSchema = z.object({
   simulation_code: z.string().min(20).max(32000),
 }).strict();
 
-export type SimulationSpec = z.infer<typeof simulationSchema>;
+export type SimulationSpec = z.infer<typeof simulationSchema> & { evidence?: import("./evidence-types").VisualizationEvidence };
 export type SimulationInputs = Record<string, number | number[] | boolean | string>;
 
 export function parseSimulationInputs(spec: SimulationSpec, drafts: Record<string, string>): SimulationInputs {

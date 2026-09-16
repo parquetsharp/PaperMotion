@@ -3,6 +3,7 @@
 import ReactMarkdown from "react-markdown";
 import { ExternalLink } from "lucide-react";
 import type { TwoDTextSpec } from "@/lib/schemas";
+import { EvidenceMarker } from "./EvidenceView";
 
 type Props = { spec: TwoDTextSpec };
 
@@ -12,6 +13,7 @@ export default function TwoDTextView({ spec }: Props) {
       <article className="prose prose-sm max-w-none prose-headings:font-semibold prose-headings:tracking-tight prose-headings:text-[var(--ink-900)] prose-p:leading-relaxed prose-p:text-[var(--ink-700)] prose-strong:text-[var(--ink-900)] prose-a:text-[var(--accent-600)] prose-a:no-underline hover:prose-a:underline prose-li:text-[var(--ink-700)] prose-code:rounded prose-code:bg-[var(--surface-sunken)] prose-code:px-1 prose-code:py-0.5 prose-code:text-[var(--ink-900)] prose-code:before:content-none prose-code:after:content-none">
         <ReactMarkdown>{spec.body_markdown}</ReactMarkdown>
       </article>
+      <div aria-label="Source claim links" className="mt-3 space-y-2 border-t border-[var(--border-subtle)] pt-2">{spec.evidence?.claims.length ? [...new Set(spec.evidence.claims.map(claim => claim.target))].map(target => <div key={target} className="text-xs"><p className="break-words">{spec.evidence?.claims.find(claim => claim.target === target)?.text}</p><EvidenceMarker target={target} /></div>) : <EvidenceMarker target="paragraph:1" />}</div>
       {spec.citations.length > 0 && (
         <div className="mt-8 border-t border-[var(--border-subtle)] pt-5">
           <p className="mb-3 text-[10px] uppercase tracking-[0.18em] text-[var(--ink-400)]">

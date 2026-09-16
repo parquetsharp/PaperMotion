@@ -503,6 +503,7 @@ async function processViz(docId: string, tagId: string, docTitle: string) {
       : undefined;
 
   try {
+    const sourcePage = getDoc(docId)?.extracted.pages.find(page => page.pageIndex === tag.page);
     const spec = await generateVizSpec({
       type: tag.type,
       label: tag.concept.label,
@@ -511,6 +512,7 @@ async function processViz(docId: string, tagId: string, docTitle: string) {
         : tag.concept.context,
       docTitle,
       previousAttempt,
+      evidenceSource: sourcePage ? { docId, pages: [sourcePage] } : undefined,
     });
     mergeTagsFile(docId, (f) => ({
       ...f,

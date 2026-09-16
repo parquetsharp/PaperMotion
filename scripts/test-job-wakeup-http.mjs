@@ -11,7 +11,7 @@ const directory = await mkdtemp(path.join(tmpdir(), "papermotion-wakeup-http-"))
 const calls = [];
 let releaseAutomatically = false;
 let cancelled = 0;
-const formula = { type: "formula", title: "Momentum", caption: "Momentum equals mass times velocity.", main_latex: "p=mv", steps: [] };
+const formula = { type: "formula", title: "Momentum", caption: "Momentum equals mass times velocity.", main_latex: "p=mv", steps: [], evidence: [] };
 function complete(call) {
   if (call.completed) return;
   call.completed = true;

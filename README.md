@@ -53,6 +53,18 @@ The companion source package includes a Windows launcher with explicit dependenc
 
 ## Interactive learning and revisions
 
+### Evidence-linked explanations (prototype)
+
+New **Formula**, **Source**, and **Step by Step** results generated from a document include a claim-level evidence map. Click the evidence markers beside formula lines or simulator pseudocode, or the claim links beneath a Source explanation. The panel distinguishes **Stated in the paper**, **Derived**, **Illustrative assumption**, and **Unsupported / not checked**, with rationale and clickable dependencies. **Show passage** highlights the corresponding PDF text; mobile readers switch to Document and can return with **Back to visualization**.
+
+The model proposes claims, classifications, and exact quotations; the server resolves those quotations against the supplied PDF page using case-sensitive matching with whitespace normalization. Missing or ambiguous quotations are flagged, not linked as verified passages. Matching produces actual text offsets, a source-page hash, and approximate text-run highlight rectangles. A changed document/page is rejected when following a link. Classification and semantic support are model-assessed: **excerpt matched is not proof that the claim follows from it**. Derivations and calculations are not independently checked, and illustrative inputs are not paper findings.
+
+An evidence claim pointing to a missing element (for example, a formula target left over after switching to Step by Step) is omitted along with claims that depend on it. A visible evidence warning reports the omission; valid evidence and the visualization remain available. We never guess a different target for that claim. Duplicate claim IDs and other invalid dependency structures are still rejected. Formula and derivation text fits its container down to a readable minimum size; longer expressions scroll inside their equation row rather than overflowing the panel.
+
+Evidence is stored inside each visualization specification, so revision, undo, and saved-version switching retain the appropriate evidence. Existing results remain usable with **Evidence not checked**; generate a new version to add evidence. Source narratives remain English, but evidence quotations preserve the PDF's original language. This prototype uses the concept's source page, not document-wide retrieval. Graph/Canvas/3D object picking, OCR/image evidence, numerical proof checks, and human review status are not included yet. Inspecting evidence and switching saved versions make no AI requests; generating evidence is part of the normal generation call.
+
+Tests: `npm run test:evidence` and `npm run test:evidence:browser` (built extension and installed Edge required).
+
 In the full viewer, select a concept tag. The visualization controls offer **Animation**, **Step by Step**, **Formula**, **3D Model**, **Plot**, and **Source**. Choose a format and click **Generate**. In manual mode, selecting an ungenerated tag no longer starts a request before you choose its format; automatic generation remains available in Settings.
 
 ### Visualize a selected passage

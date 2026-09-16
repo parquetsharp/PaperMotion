@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Pause, Play, RotateCcw, Square } from "lucide-react";
 import { parseSimulationInputs, type InteractiveSpec, type SimulationSpec } from "@/lib/interactive-viz";
 import { runSimulation } from "@/lib/simulation-runtime";
+import { EvidenceMarker } from "./EvidenceView";
 
 const colors = {
   neutral: { fill: "var(--surface-raised)", stroke: "var(--border-subtle)" },
@@ -129,7 +130,7 @@ function InteractiveTrace({ spec, disabled = false }: { spec: InteractiveSpec; d
       {item && <p role="status" className="mb-2 break-words text-xs">{item.label}: {item.value} ({item.state})</p>}
       {step.links.length > 0 && <ul className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--ink-500)]">{step.links.map((link, linkIndex) => <li key={linkIndex}>{position(link.from).label} &rarr; {position(link.to).label}{link.label ? `: ${link.label}` : ""}</li>)}</ul>}
       {step.variables.length > 0 && <dl className="mb-3 grid grid-cols-2 gap-x-4 gap-y-1 border-y border-[var(--border-subtle)] py-2 text-xs">{step.variables.map((variable, variableIndex) => <div className="min-w-0" key={variableIndex}><dt className="text-[var(--ink-500)]">{variable.name}</dt><dd className="break-words font-mono">{variable.value}</dd></div>)}</dl>}
-      <ol className="overflow-x-auto font-mono text-xs leading-6" aria-label="Algorithm pseudocode">{spec.code.map((line, lineIndex) => <li key={lineIndex} aria-current={step.line === lineIndex + 1 ? "step" : undefined} className={`flex gap-2 rounded px-2 ${step.line === lineIndex + 1 ? "bg-[var(--tag-sky-bg)] text-[var(--tag-sky-fg)]" : "text-[var(--ink-500)]"}`}><span className="w-5 shrink-0 text-right tabular-nums">{lineIndex + 1}</span><code className="whitespace-pre-wrap break-words">{line}</code></li>)}</ol>
+      <ol className="overflow-x-auto font-mono text-xs leading-6" aria-label="Algorithm pseudocode">{spec.code.map((line, lineIndex) => <li key={lineIndex} aria-current={step.line === lineIndex + 1 ? "step" : undefined} className={`flex flex-wrap gap-2 rounded px-2 ${step.line === lineIndex + 1 ? "bg-[var(--tag-sky-bg)] text-[var(--tag-sky-fg)]" : "text-[var(--ink-500)]"}`}><span className="w-5 shrink-0 text-right tabular-nums">{lineIndex + 1}</span><code className="whitespace-pre-wrap break-words">{line}</code><EvidenceMarker target={`code:${lineIndex + 1}`} /></li>)}</ol>
     </div>
   </div>;
 }
