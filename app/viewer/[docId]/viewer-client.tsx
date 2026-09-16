@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 import PdfViewer, { type Tag } from "@/components/PdfViewer";
+import type { PdfSelectionRequest } from "@/components/PdfSelectionTools";
 import RightPane, { type RightPaneMode } from "@/components/RightPane";
 import AccountButton from "@/components/AccountButton";
 import SettingsButton, { SETTINGS_EVENT } from "@/components/SettingsButton";
@@ -358,6 +359,18 @@ export default function ViewerClient({ docId }: { docId: string }) {
     [docId],
   );
 
+  async function handleGenerateSelection(selection: PdfSelectionRequest) {
+    const response = await fetch(`/api/viz/${encodeURIComponent(docId)}/selection`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(selection) });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "Could not create the visualization.");
+    const tag = result.tag as TagState;
+    setTags(previous => [...previous.filter(item => item.id !== tag.id), tag]);
+    setActiveTagId(tag.id);
+    setVizQueueRunning(tag.generating);
+    setRightPaneMode("visualizer");
+    setMobilePane("study");
+  }
+
   // User asked to regenerate the active visualization from scratch (it looks
   // wrong, stopped animating, etc.). Unlike handleTagClick, this re-queues even
   // when a valid spec already exists. We drop the cached spec optimistically so
@@ -539,6 +552,7 @@ export default function ViewerClient({ docId }: { docId: string }) {
             tags={tags}
             activeTagId={activeTagId}
             onTagClick={handleTagClick}
+            onGenerateSelection={handleGenerateSelection}
             detecting={detecting}
             providerLabel={PROVIDER_LABELS[provider]}
           />

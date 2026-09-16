@@ -27,6 +27,7 @@ export type PersistedTagServer = {
   ready: boolean;
   generating: boolean;
   concept: DetectedConcept;
+  selection?: { text: string };
   spec?: VizSpec;
   error?: string;
   attempts?: number;

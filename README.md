@@ -55,6 +55,14 @@ The companion source package includes a Windows launcher with explicit dependenc
 
 In the full viewer, select a concept tag. The visualization controls offer **Animation**, **Step by Step**, **Formula**, **3D Model**, **Plot**, and **Source**. Choose a format and click **Generate**. In manual mode, selecting an ungenerated tag no longer starts a request before you choose its format; automatic generation remains available in Settings.
 
+### Visualize a selected passage
+
+You can create a visualization even when automatic detection missed a concept. Select text directly in the PDF, choose **Formula**, **Animation**, **Step by Step**, **3D Model**, **Graph**, or **Source** in the selection toolbar, optionally name the tag, and click **Generate selection**. On mobile, switch to **Document** first. The result opens in the study pane and its tag is saved with the document for reopening, revision, and retry.
+
+Selections must contain 4-4000 characters from a single page. This uses the PDF's selectable text layer; image-only formulas, scanned passages, and image-region selection are not supported. The selected text and its source page are provided to the generator. Creating a manual tag does not rerun concept detection or overwrite existing visualizations, and works whether auto-generation is on or off. Requests use the configured generation model and visualization queue limits. Dismiss before generating to discard the selection without a model call.
+
+Checks: `npm run test:manual-viz` and `npm run test:manual-viz:browser` (requires the built extension, installed Edge, and existing test dependencies).
+
 - **Animation** is a live Canvas render, not a GIF. Pause, resume, restart, or change its playback speed.
 - **Step by Step** generates an executable algorithm simulator with editable inputs (numbers, numeric arrays, switches, and option sets). Change inputs and click **Run simulation** to compute a fresh execution trace locally, without another AI request. Inspect the computed diagram states, variables, and highlighted pseudocode with previous/next, the timeline, or playback. **Reset inputs** restores the generated defaults. Invalid inputs or failed runs preserve the previous trace, marked as a previous run. Inputs reset to defaults when the page reloads.
 - **Discuss and revise visualization** opens a per-concept feedback panel. For example: "The formula should multiply by velocity", "Show the allocation one block at a time", or "The 3D structure is missing a layer". The next request includes the current render, recent applied feedback, and source-page context.

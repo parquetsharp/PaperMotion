@@ -34,6 +34,8 @@
     "test:copilot": "tsx --test scripts/test-copilot-provider.ts",
     "test:copilot-models": "tsx --test scripts/test-copilot-models.ts",
     "test:viz-edit": "tsx --test scripts/test-viz-edit.ts",
+    "test:manual-viz": "tsx --test scripts/test-manual-viz.ts",
+    "test:manual-viz:browser": "node scripts/test-extension-browser.mjs --copilot --manual-selection --edge",
     "test:viewer-settings": "node scripts/test-viewer-settings.mjs",
     "test:job-concurrency": "node --conditions=import --import tsx --test scripts/test-job-concurrency.ts",
     "test:job-wakeup:http": "node scripts/test-job-wakeup-http.mjs",

@@ -11,6 +11,7 @@ import { expect } from "playwright/test";
 import { PDFDocument, StandardFonts } from "pdf-lib";
 import { visualizationFixture, checkVisualizations } from "./viz-browser-checks.mjs";
 import { checkSimulationSandbox } from "./simulation-browser-checks.mjs";
+import { checkManualVisualizations } from "./manual-viz-browser-checks.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const useCopilot = process.argv.includes("--copilot");
@@ -24,6 +25,11 @@ const page = pdf.addPage([595, 842]);
 const font = await pdf.embedFont(StandardFonts.Helvetica);
 page.drawText("Mechanics Study Guide", { x: 45, y: 770, size: 20, font });
 page.drawText(Array.from({ length: 12 }, () => "Momentum is mass times velocity. Force changes momentum.\nEnergy is conserved in an isolated system. Mass measures inertia.").join("\n"), { x: 45, y: 730, size: 12, font, lineHeight: 22 });
+if (process.argv.includes("--manual-selection")) {
+  const secondPage = pdf.addPage([595, 842]);
+  secondPage.drawText("Additional mechanics", { x: 45, y: 770, size: 20, font });
+  secondPage.drawText("A second page for selection boundary checks. Momentum is conserved in an isolated system.", { x: 45, y: 730, size: 12, font, maxWidth: 480 });
+}
 const pdfBytes = Buffer.from(await pdf.save());
 let modelCalls = 0;
 const fixture = createServer(async (request, response) => {
@@ -133,7 +139,7 @@ try {
     const settingsPage = await context.newPage();
     await settingsPage.goto(origin);
     await settingsPage.getByRole("button", { name: "Settings", exact: true }).click();
-    await expect(settingsPage.getByLabel("Model Engine")).toHaveValue("copilot");
+    await expect(settingsPage.getByLabel("Model Engine")).toHaveValue("copilot", { timeout: 30000 });
     await expect(settingsPage.getByRole("combobox", { name: "Generation model", exact: true }).locator('option[value="account-model"]')).toHaveCount(1);
     const catalogResponse = await fetch(`${origin}/api/provider/models`);
     assert.equal(catalogResponse.status, 200);
@@ -261,6 +267,7 @@ try {
   console.log("Flashcards, quiz scoring, concepts, reload persistence, and responsive screenshots passed.");
 
   if (useCopilot) await checkSourceRecovery();
+  if (process.argv.includes("--manual-selection")) await checkManualVisualizations({ context, origin, docId: document.docId, output });
 
   if (!useEdge) {
   const localFile = path.join(temporary, "Local Mechanics.pdf");

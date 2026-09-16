@@ -504,7 +504,7 @@ async function processViz(docId: string, tagId: string, docTitle: string) {
     const spec = await generateVizSpec({
       type: tag.type,
       label: tag.concept.label,
-      context: tag.type === "2d-text"
+      context: tag.type === "2d-text" || tag.selection
         ? `${tag.concept.context}\n\nSOURCE PAGE ${tag.page + 1}:\n${getDoc(docId)?.extracted.pages.find(page => page.pageIndex === tag.page)?.text ?? ""}`
         : tag.concept.context,
       docTitle,
