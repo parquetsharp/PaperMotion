@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, type ReactNode } from "react";
-import { BookOpen, X } from "lucide-react";
+import { BookOpen, ExternalLink, X } from "lucide-react";
 import { EVIDENCE_LABELS, type EvidenceClaim, type EvidenceHighlight, type VisualizationEvidence } from "@/lib/evidence-types";
 
 type EvidenceContext = { evidence?: VisualizationEvidence; select: (target: string) => void };
@@ -32,6 +32,11 @@ export default function EvidenceView({ evidence, children, onShowPassage, onClea
   };
   return <Context.Provider value={{ evidence, select }}>
     <div className="relative flex h-full min-h-0 flex-col">
+      {evidence?.source && <div aria-label="Evidence source document" className="flex max-h-16 shrink-0 items-center gap-2 overflow-auto border-b border-[var(--border-subtle)] px-3 py-2 text-xs text-[var(--ink-700)]">
+        <BookOpen size={13} className="shrink-0" />
+        <a href={`/api/pdf/${encodeURIComponent(evidence.docId)}`} target="_blank" rel="noopener noreferrer" className="min-w-0 break-words underline">{evidence.source.title}</a>
+        {evidence.source.url && <a href={evidence.source.url} target="_blank" rel="noopener noreferrer" title="Original public source" aria-label="Original public source" className="inline-flex h-7 w-7 shrink-0 items-center justify-center"><ExternalLink size={14} /></a>}
+      </div>}
       {!!evidence?.warnings?.length && <div role="status" aria-label="Evidence warnings" className="max-h-20 shrink-0 overflow-auto border-b border-[var(--border-subtle)] bg-[var(--tag-amber-bg)] px-3 py-2 text-xs text-[var(--tag-amber-fg)]">{evidence.warnings.map(warning => <p key={warning} className="break-words">{warning}</p>)}</div>}
       <div className="relative min-h-0 flex-1 overflow-hidden">{children}</div>
       {target !== null && <section aria-label="Claim evidence" className="max-h-[52%] shrink-0 space-y-2 overflow-auto border-t border-[var(--border-default)] bg-[var(--surface-raised)] p-3 text-xs text-[var(--ink-900)]">
@@ -48,9 +53,11 @@ export default function EvidenceView({ evidence, children, onShowPassage, onClea
           {!!claim.dependencies.length && <div><h4 className="font-medium">Depends on</h4><ul className="space-y-1">{claim.dependencies.map(id => <li key={id}><button type="button" className="text-left underline decoration-dotted" onClick={() => { const dependency = evidence?.claims.find(item => item.id === id); if (dependency) { onClearPassage?.(); setError(""); setTarget(dependency.target); setSelectedId(id); } }}>{dependencyLabel(id)}</button></li>)}</ul></div>}
           {claim.passages.map((passage, index) => <div key={`${passage.page}-${passage.start}`} className="space-y-1 border-l-2 border-[var(--tag-amber-fg)] pl-2">
             <blockquote className="whitespace-pre-wrap break-words">{passage.quote}</blockquote>
-            <button type="button" disabled={!onShowPassage || !passage.rects.length} onClick={() => void jump(claim, index)} className="inline-flex min-h-8 items-center gap-1 text-[var(--accent-700)] disabled:text-[var(--ink-400)]"><BookOpen size={13} />Show passage - page {passage.page + 1}</button>
-            {!passage.rects.length && <p className="text-[var(--ink-500)]">Highlight coordinates unavailable.</p>}
-            {!!passage.rects.length && <p className="text-[var(--ink-500)]">Highlight covers matching PDF text runs; placement is approximate.</p>}
+            {evidence?.source?.differentDocument ? <a href={`/api/pdf/${encodeURIComponent(evidence.docId)}#page=${passage.page + 1}`} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-8 items-center gap-1 text-[var(--accent-700)]"><ExternalLink size={13} />Open source PDF - page {passage.page + 1}</a> : <>
+              <button type="button" disabled={!onShowPassage || !passage.rects.length} onClick={() => void jump(claim, index)} className="inline-flex min-h-8 items-center gap-1 text-[var(--accent-700)] disabled:text-[var(--ink-400)]"><BookOpen size={13} />Show passage - page {passage.page + 1}</button>
+              {!passage.rects.length && <p className="text-[var(--ink-500)]">Highlight coordinates unavailable.</p>}
+              {!!passage.rects.length && <p className="text-[var(--ink-500)]">Highlight covers matching PDF text runs; placement is approximate.</p>}
+            </>}
           </div>)}
           {!claim.passages.length && <p className="text-[var(--ink-500)]">No linked PDF passage.</p>}
         </>}

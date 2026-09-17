@@ -13,6 +13,9 @@ import { visualizationFixture, checkVisualizations } from "./viz-browser-checks.
 import { checkSimulationSandbox } from "./simulation-browser-checks.mjs";
 import { checkManualVisualizations } from "./manual-viz-browser-checks.mjs";
 import { checkEvidence } from "./evidence-browser-checks.mjs";
+import { checkSourceRetrieval } from "./source-retrieval-browser-checks.mjs";
+import { checkGraphLabels } from "./graph-label-browser-checks.mjs";
+import { checkThreeInspection } from "./three-inspection-browser-checks.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const useCopilot = process.argv.includes("--copilot");
@@ -270,6 +273,9 @@ try {
 
   if (useCopilot) await checkSourceRecovery();
   if (process.argv.includes("--evidence")) await checkEvidence({ context, origin, docId: document.docId, output, getModelCalls: () => modelCalls });
+  if (process.argv.includes("--source-retrieval")) await checkSourceRetrieval({ context, origin, docId: document.docId, dataDirectory, output, getModelCalls: () => modelCalls });
+  if (process.argv.includes("--graph-labels")) await checkGraphLabels({ context, origin, docId: document.docId, dataDirectory, output, getModelCalls: () => modelCalls });
+  if (process.argv.includes("--three-inspection")) await checkThreeInspection({ context, origin, docId: document.docId, dataDirectory, output, getModelCalls: () => modelCalls });
   if (useCopilot) {
     const status = await (await fetch(`${origin}/api/provider/status`)).json();
     const usage = status.usage;

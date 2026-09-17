@@ -2,9 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
+import { Pause, Play, RotateCcw, RotateCw, X } from "lucide-react";
 import { compileFn } from "@/lib/viz-runtime";
 import type { ThreeDSpec } from "@/lib/schemas";
 import { fitSceneDistance } from "@/lib/viz-framing";
+import { createSceneClock, describeThreePart, inspectableObject, type ThreePart } from "@/lib/three-inspection";
 
 type Props = {
   spec: ThreeDSpec;
@@ -13,13 +15,20 @@ type Props = {
 };
 
 export default function ThreeDView({ spec, onRuntimeError }: Props) {
+  return <ThreeDScene key={spec.setup_code} spec={spec} onRuntimeError={onRuntimeError} />;
+}
+
+function ThreeDScene({ spec, onRuntimeError }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const [error, setError] = useState<string | null>(null);
   const reportedRef = useRef(false);
+  const engineRef = useRef<{ rotate: () => void; animate: () => void; reset: () => void; select: (id: number) => void; clear: () => void } | null>(null);
+  const [motion, setMotion] = useState({ rotating: true, playing: true, animated: false, ready: false });
+  const [parts, setParts] = useState<ThreePart[]>([]);
+  const [inspection, setInspection] = useState<{ part: ThreePart; pinned: boolean } | null>(null);
 
   useEffect(() => {
-    setError(null);
     reportedRef.current = false;
     const reportError = (msg: string) => {
       setError(msg);
@@ -31,12 +40,16 @@ export default function ThreeDView({ spec, onRuntimeError }: Props) {
     const mount = mountRef.current;
     if (!mount) return;
 
-    const width = mount.clientWidth;
-    const height = mount.clientHeight;
+    const width = Math.max(1, Math.floor(mount.getBoundingClientRect().width));
+    const height = Math.max(1, Math.floor(mount.getBoundingClientRect().height));
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.domElement.setAttribute("role", "img");
     renderer.domElement.setAttribute("aria-label", "3D visualization");
+    renderer.domElement.tabIndex = 0;
+    renderer.domElement.style.display = "block";
+    renderer.domElement.style.touchAction = "none";
+    renderer.domElement.setAttribute("aria-keyshortcuts", "ArrowLeft ArrowRight ArrowUp ArrowDown Home Escape");
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(width, height);
     const isDark = document.documentElement.classList.contains("dark");
@@ -51,25 +64,70 @@ export default function ThreeDView({ spec, onRuntimeError }: Props) {
     const group = new THREE.Group();
     scene.add(group);
 
-    // Pointer-orbit (lightweight, no extra dependency).
     let isDragging = false;
+    let pointerId: number | null = null;
+    let downX = 0;
+    let downY = 0;
     let lastX = 0;
     let lastY = 0;
     let yaw = 0;
     let pitch = 0;
-    let userInteracted = false;
+    let rotating = true;
+    let playing = true;
     let camDist = 4;
     let fittedDistance = 4;
     let sceneRadius = 1;
+    let updateCb: ((t: number) => void) | null = null;
+    let selected: THREE.Object3D | null = null;
+    let pinned = false;
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+    const selectionBox = new THREE.Box3Helper(new THREE.Box3(), new THREE.Color("#e6a700"));
+    selectionBox.visible = false;
+    selectionBox.userData.inspectable = false;
+    for (const material of Array.isArray(selectionBox.material) ? selectionBox.material : [selectionBox.material]) {
+      material.depthTest = false;
+      material.transparent = true;
+    }
+    selectionBox.renderOrder = 1000;
+    const publishMotion = () => setMotion({ rotating, playing, animated: !!updateCb, ready: true });
+    const showPart = (object: THREE.Object3D | null, pin: boolean) => {
+      const resolved = object ? describeThreePart(object) : null;
+      if (selected === resolved?.object && pinned === pin) return;
+      selected = resolved?.object ?? null;
+      pinned = !!selected && pin;
+      if (selected && pinned) { rotating = false; publishMotion(); }
+      selectionBox.visible = !!selected;
+      setInspection(resolved ? { part: resolved.part, pinned } : null);
+    };
+    const pick = (event: PointerEvent) => {
+      const bounds = renderer.domElement.getBoundingClientRect();
+      if (!bounds.width || !bounds.height) return null;
+      pointer.set((event.clientX - bounds.left) / bounds.width * 2 - 1, -(event.clientY - bounds.top) / bounds.height * 2 + 1);
+      scene.updateMatrixWorld(true);
+      camera.updateMatrixWorld(true);
+      raycaster.setFromCamera(pointer, camera);
+      return raycaster.intersectObjects(scene.children, true).find(hit => inspectableObject(hit.object))?.object ?? null;
+    };
     const onDown = (e: PointerEvent) => {
-      isDragging = true;
-      userInteracted = true;
+      if (e.button !== 0 || pointerId !== null) return;
+      pointerId = e.pointerId;
+      isDragging = false;
+      downX = e.clientX;
+      downY = e.clientY;
       lastX = e.clientX;
       lastY = e.clientY;
+      renderer.domElement.focus({ preventScroll: true });
       mount.setPointerCapture?.(e.pointerId);
     };
     const onMove = (e: PointerEvent) => {
-      if (!isDragging) return;
+      if (pointerId === null) {
+        if (!pinned && e.pointerType !== "touch") showPart(pick(e), false);
+        return;
+      }
+      if (e.pointerId !== pointerId) return;
+      if (!isDragging && Math.hypot(e.clientX - downX, e.clientY - downY) <= 5) return;
+      if (!isDragging) { isDragging = true; rotating = false; publishMotion(); showPart(null, false); }
       const dx = e.clientX - lastX;
       const dy = e.clientY - lastY;
       lastX = e.clientX;
@@ -78,20 +136,45 @@ export default function ThreeDView({ spec, onRuntimeError }: Props) {
       pitch -= dy * 0.005;
       pitch = Math.max(-1.2, Math.min(1.2, pitch));
     };
-    const onUp = () => {
+    const onUp = (e: PointerEvent) => {
+      if (e.pointerId !== pointerId) return;
+      if (!isDragging) {
+        const object = pick(e);
+        const target = object ? describeThreePart(object).object : null;
+        showPart(pinned && target === selected ? null : object, true);
+      }
+      pointerId = null;
       isDragging = false;
+      if (mount.hasPointerCapture(e.pointerId)) mount.releasePointerCapture(e.pointerId);
     };
+    const onCancel = () => { pointerId = null; isDragging = false; };
+    const onLeave = () => { if (!pinned && pointerId === null) showPart(null, false); };
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      camDist *= 1 + e.deltaY * 0.001;
+      rotating = false;
+      publishMotion();
+      camDist *= Math.exp(Math.max(-1, Math.min(1, e.deltaY * 0.001)));
       camDist = Math.max(fittedDistance * 0.25, Math.min(fittedDistance * 5, camDist));
     };
+    const reset = () => { yaw = 0; pitch = 0; camDist = fittedDistance; showPart(null, false); };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { showPart(null, false); event.preventDefault(); event.stopPropagation(); return; }
+      if (event.key === "Home") { reset(); event.preventDefault(); return; }
+      if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
+      event.preventDefault(); rotating = false; publishMotion();
+      if (event.key === "ArrowLeft") yaw += 0.12;
+      if (event.key === "ArrowRight") yaw -= 0.12;
+      if (event.key === "ArrowUp") pitch = Math.min(1.2, pitch + 0.12);
+      if (event.key === "ArrowDown") pitch = Math.max(-1.2, pitch - 0.12);
+    };
     mount.addEventListener("pointerdown", onDown);
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
+    mount.addEventListener("pointermove", onMove);
+    mount.addEventListener("pointerup", onUp);
+    mount.addEventListener("pointercancel", onCancel);
+    mount.addEventListener("lostpointercapture", onCancel);
+    mount.addEventListener("pointerleave", onLeave);
     mount.addEventListener("wheel", onWheel, { passive: false });
-
-    let updateCb: ((t: number) => void) | null = null;
+    renderer.domElement.addEventListener("keydown", onKey);
 
     // Stub OrbitControls-shaped object so model code that touches
     // controls.target / controls.update() etc. doesn't crash. Our own orbit
@@ -141,12 +224,30 @@ export default function ThreeDView({ spec, onRuntimeError }: Props) {
       /* ignore */
     }
 
+    const objects = new Map<number, THREE.Object3D>();
+    scene.traverse(object => {
+      if (!(object instanceof THREE.Mesh || object instanceof THREE.Line || object instanceof THREE.Points || object instanceof THREE.Sprite) || !inspectableObject(object)) return;
+      const resolved = describeThreePart(object);
+      objects.set(resolved.object.id, resolved.object);
+    });
+    scene.add(selectionBox);
+    engineRef.current = {
+      rotate: () => { rotating = !rotating; publishMotion(); },
+      animate: () => { playing = !playing; publishMotion(); },
+      reset,
+      select: id => { const object = objects.get(id); showPart(object && inspectableObject(object) ? object : null, true); },
+      clear: () => showPart(null, false),
+    };
+    const readyFrame = requestAnimationFrame(() => {
+      setParts([...objects.values()].map(object => describeThreePart(object).part));
+      publishMotion();
+    });
     let raf = 0;
-    const t0 = performance.now();
+    const clock = createSceneClock();
+    let initialUpdate = true;
     const animate = () => {
-      const t = (performance.now() - t0) / 1000;
-      // Auto-rotate slowly until the user grabs control.
-      if (!userInteracted) yaw = t * 0.25;
+      const { elapsed, delta } = clock.tick(performance.now(), playing);
+      if (rotating && pointerId === null) yaw += delta * 0.25;
       const cy = Math.cos(pitch);
       camera.position.set(
         Math.sin(yaw) * cy * camDist,
@@ -155,12 +256,20 @@ export default function ThreeDView({ spec, onRuntimeError }: Props) {
       );
       camera.lookAt(0, 0, 0);
       try {
-        updateCb?.(t);
+        if (playing || initialUpdate) updateCb?.(elapsed);
+        initialUpdate = false;
       } catch (e) {
         console.warn("3D update threw (will be reported for repair):", e);
         reportError(`3D scene update threw: ${(e as Error).message}`);
         cancelAnimationFrame(raf);
         return; // stop the loop; orchestrator will swap the spec out
+      }
+      if (selected) {
+        if (!inspectableObject(selected) || !scene.getObjectById(selected.id)) showPart(null, false);
+        else {
+          selectionBox.box.setFromObject(selected);
+          selectionBox.visible = !selectionBox.box.isEmpty();
+        }
       }
       renderer.render(scene, camera);
       raf = requestAnimationFrame(animate);
@@ -176,12 +285,11 @@ export default function ThreeDView({ spec, onRuntimeError }: Props) {
       if (reportedRef.current) return;
       let renderable = 0;
       scene.traverse((obj) => {
-        const o = obj as any;
         if (
-          o.isMesh ||
-          o.isLine ||
-          o.isPoints ||
-          o.isSprite
+          obj !== selectionBox && (obj instanceof THREE.Mesh ||
+          obj instanceof THREE.Line ||
+          obj instanceof THREE.Points ||
+          obj instanceof THREE.Sprite)
         ) {
           renderable++;
         }
@@ -194,8 +302,8 @@ export default function ThreeDView({ spec, onRuntimeError }: Props) {
     }, 900);
 
     const onResize = () => {
-      const w = mount.clientWidth;
-      const h = mount.clientHeight;
+      const w = Math.floor(mount.getBoundingClientRect().width);
+      const h = Math.floor(mount.getBoundingClientRect().height);
       if (!w || !h) return;
       renderer.setSize(w, h);
       const zoom = camDist / fittedDistance;
@@ -209,14 +317,20 @@ export default function ThreeDView({ spec, onRuntimeError }: Props) {
     ro.observe(mount);
 
     return () => {
+      cancelAnimationFrame(readyFrame);
       cancelAnimationFrame(raf);
       clearTimeout(blankCheck);
       ro.disconnect();
+      engineRef.current = null;
       rendererRef.current = null;
       mount.removeEventListener("pointerdown", onDown);
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
+      mount.removeEventListener("pointermove", onMove);
+      mount.removeEventListener("pointerup", onUp);
+      mount.removeEventListener("pointercancel", onCancel);
+      mount.removeEventListener("lostpointercapture", onCancel);
+      mount.removeEventListener("pointerleave", onLeave);
       mount.removeEventListener("wheel", onWheel);
+      renderer.domElement.removeEventListener("keydown", onKey);
       try {
         renderer.dispose();
         if (mount.contains(renderer.domElement)) mount.removeChild(renderer.domElement);
@@ -250,16 +364,29 @@ export default function ThreeDView({ spec, onRuntimeError }: Props) {
   }, []);
 
   return (
-    <div className="relative h-full w-full">
-      <div ref={mountRef} className="h-full w-full cursor-grab active:cursor-grabbing" />
+    <div className="relative h-full w-full min-w-0 overflow-hidden" onKeyDown={event => { if (event.key === "Escape") { engineRef.current?.clear(); event.stopPropagation(); } }}>
+      <div ref={mountRef} className="h-full w-full cursor-grab overflow-hidden active:cursor-grabbing" />
       {error && (
         <div className="absolute bottom-3 left-3 right-3 rounded-md border border-[var(--feedback-wrong-border)] bg-[var(--feedback-wrong-bg)] px-3 py-2 text-xs text-[var(--feedback-wrong-text)]">
           {error}
         </div>
       )}
-      <div className="pointer-events-none absolute right-3 top-3 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-raised)]/85 px-2.5 py-1 text-[10px] uppercase tracking-wider text-[var(--ink-500)] backdrop-blur">
-        drag · scroll
+      <div role="group" aria-label="3D controls" className="absolute left-3 right-3 top-3 flex flex-wrap items-center justify-end gap-1.5">
+        <select aria-label="3D part" value={inspection?.pinned ? inspection.part.id : ""} disabled={!motion.ready || !!error} onChange={event => { if (event.target.value) engineRef.current?.select(Number(event.target.value)); else engineRef.current?.clear(); }} className="h-8 min-w-0 flex-1 rounded border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-2 text-xs text-[var(--ink-900)]">
+          <option value="">Select part</option>
+          {parts.map((part, index) => <option key={part.id} value={part.id}>{part.named ? part.label : `Unnamed part ${index + 1}`}</option>)}
+        </select>
+        <button type="button" title={motion.rotating ? "Pause rotation" : "Resume rotation"} aria-label={motion.rotating ? "Pause rotation" : "Resume rotation"} aria-pressed={motion.rotating} disabled={!motion.ready || !!error} onClick={() => engineRef.current?.rotate()} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded border border-[var(--border-subtle)] bg-[var(--surface-raised)] text-[var(--ink-700)] disabled:opacity-40"><RotateCw size={16} /></button>
+        <button type="button" title={!motion.animated ? "No model animation" : motion.playing ? "Pause model animation" : "Resume model animation"} aria-label={motion.playing ? "Pause model animation" : "Resume model animation"} disabled={!motion.ready || !motion.animated || !!error} onClick={() => engineRef.current?.animate()} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded border border-[var(--border-subtle)] bg-[var(--surface-raised)] text-[var(--ink-700)] disabled:opacity-40">{motion.playing ? <Pause size={16} /> : <Play size={16} />}</button>
+        <button type="button" title="Reset 3D view" aria-label="Reset 3D view" disabled={!motion.ready || !!error} onClick={() => engineRef.current?.reset()} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded border border-[var(--border-subtle)] bg-[var(--surface-raised)] text-[var(--ink-700)] disabled:opacity-40"><RotateCcw size={16} /></button>
       </div>
+      {!error && inspection && <section role={inspection.pinned ? "dialog" : "tooltip"} aria-label={inspection.pinned ? "3D part details" : undefined} className="absolute bottom-3 left-3 max-h-[42%] w-80 max-w-[calc(100%-1.5rem)] space-y-2 overflow-auto rounded-md border border-[var(--border-default)] bg-[var(--surface-raised)] p-3 text-xs text-[var(--ink-900)] shadow-md">
+        <div className="flex items-start gap-2"><strong className="min-w-0 flex-1 [overflow-wrap:anywhere]">{inspection.part.label}</strong>{inspection.pinned && <button type="button" aria-label="Close 3D part details" title="Close 3D part details" onClick={() => engineRef.current?.clear()} className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded hover:bg-[var(--surface-sunken)]"><X size={14} /></button>}</div>
+        <p className="[overflow-wrap:anywhere]">{inspection.part.description || "No explanation supplied for this part."}</p>
+        {inspection.part.description && <p className="text-[var(--ink-500)]">Model-supplied explanation; not independently verified.</p>}
+        {inspection.part.illustrative && <p className="text-[var(--ink-500)]">Illustrative model; geometry and values are not measurements.</p>}
+        {!!inspection.part.properties.length && <dl className="grid grid-cols-2 gap-x-3 gap-y-1">{inspection.part.properties.map(([key, value]) => <div key={key} className="contents"><dt className="text-[var(--ink-500)] [overflow-wrap:anywhere]">{key}</dt><dd className="[overflow-wrap:anywhere]">{value}</dd></div>)}</dl>}
+      </section>}
     </div>
   );
 }

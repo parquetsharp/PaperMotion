@@ -109,22 +109,32 @@ The body MUST do all of the following:
     light theme; the renderer canvas sits on a white card)
   - add an ambient light + a directional light suitable for the light theme
   - build meshes that ACCURATELY represent the concept and add them to
-    'group' (the framework auto-rotates the group). Be creative and
+    'group' (the framework orbits the camera around it). Be creative and
     domain-aware: a heart needs distinct atria + ventricles + great
     vessels; methane needs the central carbon + 4 hydrogens at
     tetrahedral angles (109.5°); benzene needs a planar hexagonal carbon
     ring with hydrogens; a cell needs nucleus + visible organelles.
   - return an object with an optional update(t) callback for animation.
-    't' is the elapsed time in SECONDS since start (a float growing by ~0.016
+    't' is the active animation time in SECONDS (paused time is excluded; a float growing by ~0.016
     per frame). Use 't' DIRECTLY (e.g. group.rotation.y = t * 0.5); do NOT
     multiply or divide it by 1000 or 0.001 — it is seconds, not milliseconds.
+  - Give meaningful parts a name and optional userData.study metadata:
+    {label: "Part name", description: "Source-grounded explanation", properties:
+    {role: "Supplied role", count: 4}, illustrative: true}.
+    Properties may only be strings, finite numbers, or booleans (up to 12).
+    Use a named parent Group for multi-mesh parts; child meshes inherit its
+    study metadata. Do not invent measurements or claim source verification.
+    Mark conceptual arrangements and example values illustrative: true.
+    Set userData.inspectable = false on decorative objects that should not be picked.
 
 CONSTRAINTS:
   - Use ONLY 'THREE' (already imported) and standard math globals (Math, etc).
   - DO NOT use external loaders, textures, image URLs, or asset files.
   - DO NOT touch 'document', 'window', 'fetch', 'import', 'require', 'eval'.
-  - DO NOT use OrbitControls — the framework already auto-rotates the
-    group and reacts to pointer drag/scroll. Ignore the 'controls' arg.
+  - Do not create your own animation loops, clocks, timers, or event listeners.
+    All motion must use the supplied update(t) so pause/resume remains reliable.
+  - DO NOT use OrbitControls — the framework already orbits the camera
+    and reacts to pointer drag/scroll. Ignore the 'controls' arg.
   - Keep the total scene under ~200 primitives.
   - All meshes MUST be added to 'group' (not 'scene') so the framework can
     orbit them.
@@ -292,6 +302,7 @@ export type GenerateVizArgs = {
   revision?: { spec?: VizSpec; feedback: string; history: string[] };
   signal?: AbortSignal;
   evidenceSource?: EvidenceSource;
+  sourceUrl?: string;
 };
 
 export function buildVizPrompt(args: GenerateVizArgs): string {
@@ -345,6 +356,12 @@ ${args.evidenceSource.pages.map(page => `===== EVIDENCE PAGE ${page.pageIndex + 
 }
 
 export async function generateVizSpec(args: GenerateVizArgs): Promise<VizSpec> {
+  if (args.type === "2d-text" && args.evidenceSource) {
+    const { retrieveSourceContext } = await import("../source-context");
+    const { loadSettings } = await import("../settings-store");
+    const retrieved = await retrieveSourceContext({ label: args.label, context: args.context, evidenceSource: args.evidenceSource, allowExternal: loadSettings().publicSourceRetrieval === true, sourceUrl: args.sourceUrl, signal: args.signal });
+    args = { ...args, ...retrieved };
+  }
   const { runJson } = await import("../codex");
   const baseSchema = vizSchemaFor(args.type);
   const withEvidence = args.evidenceSource && ["formula", "2d-text", "interactive"].includes(args.type);

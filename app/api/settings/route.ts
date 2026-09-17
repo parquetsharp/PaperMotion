@@ -36,6 +36,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "invalid json" }, { status: 400 });
   }
   const b = (body && typeof body === "object" ? body : {}) as Partial<AppSettings>;
+  if ("publicSourceRetrieval" in b && typeof b.publicSourceRetrieval !== "boolean") return NextResponse.json({ error: "publicSourceRetrieval must be a boolean." }, { status: 400 });
   for (const field of Object.keys(CONCURRENCY_LIMITS) as ConcurrencyField[]) {
     if (!(field in b)) continue;
     const value = b[field];
@@ -46,6 +47,7 @@ export async function POST(req: Request) {
   }
   const current = loadSettings();
   const next: AppSettings = {
+    publicSourceRetrieval: b.publicSourceRetrieval ?? current.publicSourceRetrieval ?? false,
     detectionConcurrency: b.detectionConcurrency ?? current.detectionConcurrency,
     vizConcurrency: b.vizConcurrency ?? current.vizConcurrency,
     provider:

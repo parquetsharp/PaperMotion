@@ -19,11 +19,13 @@ export type EvidenceClaim = {
   issue?: string;
   passages: EvidencePassage[];
 };
+export type SourceProvenance = { title: string; differentDocument: boolean; url?: string; retrievedAt?: number };
 export type VisualizationEvidence = {
   version: 1;
   docId: string;
   claims: EvidenceClaim[];
   warnings?: string[];
+  source?: SourceProvenance;
 };
 export type EvidenceHighlight = EvidencePassage & { docId: string; claimId: string };
 

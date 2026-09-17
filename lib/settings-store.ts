@@ -22,6 +22,7 @@ import { normalizeConcurrency } from "./job-concurrency";
 
 export type AppSettings = {
   autoGenerate: boolean;
+  publicSourceRetrieval?: boolean;
   maxRetries: number;
   detectionConcurrency?: number;
   vizConcurrency?: number;
@@ -76,6 +77,7 @@ function defaultsFromEnv(): AppSettings {
 
   return {
     autoGenerate: AUTO_GENERATE_VIZ,
+    publicSourceRetrieval: false,
     maxRetries: MAX_VIZ_GEN_RETRIES,
     detectionConcurrency: normalizeConcurrency(undefined, "detectionConcurrency"),
     vizConcurrency: normalizeConcurrency(undefined, "vizConcurrency"),
@@ -137,6 +139,7 @@ export function loadSettings(): AppSettings {
       }
 
       const s: AppSettings = {
+        publicSourceRetrieval: parsed.publicSourceRetrieval === true,
         autoGenerate:
           typeof parsed.autoGenerate === "boolean"
             ? parsed.autoGenerate
@@ -201,6 +204,7 @@ export function saveSettings(s: AppSettings): void {
     v: VERSION,
     savedAt: Date.now(),
     autoGenerate: !!s.autoGenerate,
+    publicSourceRetrieval: s.publicSourceRetrieval === true,
     maxRetries: Math.min(10, Math.max(0, Math.floor(s.maxRetries))),
     detectionConcurrency: normalizeConcurrency(s.detectionConcurrency, "detectionConcurrency"),
     vizConcurrency: normalizeConcurrency(s.vizConcurrency, "vizConcurrency"),

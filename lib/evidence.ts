@@ -2,9 +2,9 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { PdfPage } from "./pdf-extract";
 import type { VizSpec } from "./schemas";
-import type { EvidenceClaim, EvidencePassage, VisualizationEvidence } from "./evidence-types";
+import type { EvidenceClaim, EvidencePassage, VisualizationEvidence, SourceProvenance } from "./evidence-types";
 
-export type EvidenceSource = { docId: string; pages: Array<Pick<PdfPage, "pageIndex" | "text"> & Partial<Pick<PdfPage, "items" | "width" | "height">>> };
+export type EvidenceSource = { docId: string; pages: Array<Pick<PdfPage, "pageIndex" | "text"> & Partial<Pick<PdfPage, "items" | "width" | "height">>>; provenance?: SourceProvenance; warnings?: string[] };
 
 const proposalSchema = z.array(z.object({
   id: z.string().regex(/^[a-zA-Z0-9_-]{1,40}$/),
@@ -103,5 +103,6 @@ export function validateVisualizationEvidence(proposal: unknown, spec: VizSpec, 
     visiting.delete(id); visited.add(id);
   };
   claims.forEach(claim => visit(claim.id));
-  return { version: 1, docId: source.docId, claims, ...(omitted.size ? { warnings: [`${omitted.size} evidence claim(s) omitted because their visualization target or a supporting claim is unavailable. No source links were inferred for them.`] } : {}) };
+  const warnings = [...(source.warnings ?? []), ...(omitted.size ? [`${omitted.size} evidence claim(s) omitted because their visualization target or a supporting claim is unavailable. No source links were inferred for them.`] : [])];
+  return { version: 1, docId: source.docId, claims, ...(source.provenance ? { source: source.provenance } : {}), ...(warnings.length ? { warnings } : {}) };
 }

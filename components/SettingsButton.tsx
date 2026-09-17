@@ -27,6 +27,7 @@ export type SettingsPayload = {
   copilotModelFast?: string;
   copilotModelSmart?: string;
   autoGenerate: boolean;
+  publicSourceRetrieval?: boolean;
   maxRetries: number;
   detectionConcurrency?: number;
   vizConcurrency?: number;
@@ -212,6 +213,7 @@ function SettingsPanel({ refreshKey }: { refreshKey: string }) {
     ...modelCatalog.models.filter(model => model.id !== "auto").map(model => ({ value: model.id, label: model.enabled ? model.name : `${model.name} (Unavailable)`, disabled: !model.enabled })),
   ];
   const [autoGenerate, setAutoGenerate] = useState<boolean>(AUTO_GENERATE_VIZ);
+  const [publicRetrieval, setPublicRetrieval] = useState({ enabled: false, loaded: false, pending: false, error: "" });
   const [maxRetries, setMaxRetries] = useState<number>(MAX_VIZ_GEN_RETRIES);
   const [concurrency, setConcurrency] = useState<Record<ConcurrencyField, number | "">>({
     detectionConcurrency: CONCURRENCY_LIMITS.detectionConcurrency.default,
@@ -285,6 +287,7 @@ function SettingsPanel({ refreshKey }: { refreshKey: string }) {
         if (cancelled) return;
         setKeyStatus(s);
         if (typeof s.autoGenerate === "boolean") setAutoGenerate(s.autoGenerate);
+        setPublicRetrieval({ enabled: s.publicSourceRetrieval === true, loaded: true, pending: false, error: "" });
         if (typeof s.maxRetries === "number") setMaxRetries(s.maxRetries);
         const limits = {
           detectionConcurrency: normalizeConcurrency(s.detectionConcurrency, "detectionConcurrency"),
@@ -356,6 +359,18 @@ function SettingsPanel({ refreshKey }: { refreshKey: string }) {
     setAutoGenerate(v);
     persist({ autoGenerate: v });
   }, [persist]);
+
+  const onPublicRetrieval = async () => {
+    if (!publicRetrieval.loaded || publicRetrieval.pending) return;
+    setPublicRetrieval(previous => ({ ...previous, pending: true, error: "" }));
+    try {
+      const response = await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ publicSourceRetrieval: !publicRetrieval.enabled }) });
+      const next: SettingsPayload = await response.json();
+      if (!response.ok || typeof next.publicSourceRetrieval !== "boolean") throw new Error("Could not save public retrieval preference.");
+      setPublicRetrieval({ enabled: next.publicSourceRetrieval, loaded: true, pending: false, error: "" });
+      window.dispatchEvent(new CustomEvent(SETTINGS_EVENT, { detail: next }));
+    } catch (error) { setPublicRetrieval(previous => ({ ...previous, pending: false, error: error instanceof Error ? error.message : "Could not save public retrieval preference." })); }
+  };
 
   const onMaxRetries = useCallback((v: number) => {
     const clamped = Math.min(10, Math.max(0, Math.floor(v)));
@@ -890,6 +905,15 @@ function SettingsPanel({ refreshKey }: { refreshKey: string }) {
           </p>
         </div>
       </div>
+
+      <section aria-label="Source retrieval" className="space-y-2 border-t border-[var(--border-subtle)] px-3 py-2.5">
+        <label className="flex items-center gap-2 text-[12.5px] font-medium text-[var(--ink-900)]">
+          <input type="checkbox" role="switch" aria-label="Public paper retrieval" checked={publicRetrieval.enabled} disabled={!publicRetrieval.loaded || publicRetrieval.pending} onChange={() => void onPublicRetrieval()} className="h-4 w-4 shrink-0 accent-[var(--accent-600)]" />
+          Public paper retrieval
+        </label>
+        <p className="text-[11px] leading-relaxed text-[var(--ink-500)]">Sends citation titles to OpenAlex and downloads PDFs from approved scholarly repositories. PDFs are cached in Library. Document text is not sent to OpenAlex.</p>
+        {publicRetrieval.error && <p role="alert" className="break-words text-xs text-[var(--feedback-wrong-text)]">{publicRetrieval.error}</p>}
+      </section>
 
       <section aria-label="Parallel requests" className="space-y-2.5 border-t border-[var(--border-subtle)] px-3 py-2.5">
         <div className="flex items-center justify-between gap-2">

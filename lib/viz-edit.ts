@@ -9,7 +9,7 @@ import { generatedVersion, visualizationVersions } from "./viz-versions";
 import type { EvidenceSource } from "./evidence";
 
 export const vizEditRequest = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("generate"), type: z.enum([...VIZ_TYPES, "interactive"]), feedback: z.string().trim().max(2000).default(""), revision: z.number().int().nonnegative() }).strict(),
+  z.object({ action: z.literal("generate"), type: z.enum([...VIZ_TYPES, "interactive"]), feedback: z.string().trim().max(2000).default(""), sourceUrl: z.string().url().max(2000).optional(), revision: z.number().int().nonnegative() }).strict(),
   z.object({ action: z.literal("undo"), revision: z.number().int().nonnegative() }).strict(),
   z.object({ action: z.literal("restore"), versionId: z.string().min(1).max(200), revision: z.number().int().nonnegative() }).strict(),
 ]);
@@ -64,7 +64,7 @@ export async function editVisualization(docId: string, tagId: string, input: unk
     try {
       const sourcePage = doc.extracted.pages.find(page => page.pageIndex === tag.page);
       const source = sourcePage?.text ?? "";
-      spec = await dependencies.generate({ type: request.type, label: tag.concept.label, context: `${tag.concept.context}\n\nSOURCE PAGE ${tag.page + 1}:\n${source}`, docTitle: doc.filename, evidenceSource: sourcePage ? { docId, pages: [sourcePage] } : undefined, revision: { spec: tag.spec, feedback: message, history: (tag.feedback ?? []).filter(entry => entry.status === "applied").slice(-8).map(entry => entry.message) } });
+      spec = await dependencies.generate({ type: request.type, label: tag.concept.label, context: `${tag.concept.context}\n\nSOURCE PAGE ${tag.page + 1}:\n${source}`, docTitle: doc.filename, evidenceSource: sourcePage ? { docId, pages: [sourcePage] } : undefined, ...(request.type === "2d-text" && request.sourceUrl ? { sourceUrl: request.sourceUrl } : {}), revision: { spec: tag.spec, feedback: message, history: (tag.feedback ?? []).filter(entry => entry.status === "applied").slice(-8).map(entry => entry.message) } });
     } catch (error) {
       const reply = error instanceof Error ? error.message : "Generation failed. Your previous result was preserved.";
       commit(current => ({ ...current, revision: request.revision + 1, feedback: [...(current.feedback ?? []), { id: randomUUID(), message, reply, status: "failed" as const, at: Date.now() }].slice(-20) }));

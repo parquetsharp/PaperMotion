@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Send, Sparkles, Undo2, MessageSquare, Loader2, Trash2, X } from "lucide-react";
 import type { PersistedTagServer } from "@/lib/tags-store";
 import type { VizType } from "@/lib/schemas";
@@ -12,6 +13,7 @@ const formats: Array<[VizType, string]> = [["2d-anim", "Animation"], ["interacti
 export default function RevisionPanel({ docId, tag, onUpdate, onDelete }: { docId: string; tag: PersistedTagServer; onUpdate: (tag: PersistedTagServer) => void; onDelete?: (tagId: string) => void }) {
   const [type, setType] = useState<VizType>(tag.spec?.type ?? tag.type);
   const [draft, setDraft] = useState("");
+  const [sourceUrl, setSourceUrl] = useState("");
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -22,7 +24,7 @@ export default function RevisionPanel({ docId, tag, onUpdate, onDelete }: { docI
     if (disabled) return;
     setBusy(true); setError("");
     try {
-      const response = await fetch(`/api/viz/${encodeURIComponent(docId)}/${encodeURIComponent(tag.id)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(action === "restore" ? { action, versionId, revision: tag.revision ?? 0 } : action === "undo" ? { action, revision: tag.revision ?? 0 } : { action, type, feedback, revision: tag.revision ?? 0 }) });
+      const response = await fetch(`/api/viz/${encodeURIComponent(docId)}/${encodeURIComponent(tag.id)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(action === "restore" ? { action, versionId, revision: tag.revision ?? 0 } : action === "undo" ? { action, revision: tag.revision ?? 0 } : { action, type, feedback, revision: tag.revision ?? 0, ...(type === "2d-text" && sourceUrl.trim() ? { sourceUrl: sourceUrl.trim() } : {}) }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Could not revise the visualization.");
       onUpdate(result.tag);
@@ -51,6 +53,11 @@ export default function RevisionPanel({ docId, tag, onUpdate, onDelete }: { docI
       <button className={iconClass} title="Discuss and revise visualization" aria-label="Discuss and revise visualization" aria-expanded={open} onClick={() => setOpen(!open)}><MessageSquare size={15} /></button>
       {onDelete && <button type="button" className={iconClass} title="Delete visualization" aria-label="Delete visualization" disabled={busy} onClick={() => setConfirmDelete(true)}><Trash2 size={15} /></button>}
     </div>
+    {type === "2d-text" && <div className="flex flex-wrap items-center gap-2 px-3 pb-2 text-xs">
+      <label htmlFor={`source-url-${tag.id}`} className="shrink-0 text-[var(--ink-500)]">Paper URL</label>
+      <input id={`source-url-${tag.id}`} type="url" aria-label="Public paper URL" title="Optional arXiv, NeurIPS, PMLR, ACL Anthology, or USENIX URL. Requires Public paper retrieval in Settings." placeholder="Optional https://arxiv.org/abs/..." maxLength={2000} value={sourceUrl} disabled={disabled} onChange={event => setSourceUrl(event.target.value)} className="h-8 min-w-0 flex-1 rounded border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-2" />
+      <Link href="/" title="Import a reference PDF" aria-label="Import a reference PDF" className="text-[var(--accent-700)] underline">Import PDF</Link>
+    </div>}
     {versions.length > 1 && <div className="flex items-center gap-2 px-3 pb-2 text-xs">
       <label htmlFor={`versions-${tag.id}`} className="shrink-0 text-[var(--ink-500)]">Saved version</label>
       <select id={`versions-${tag.id}`} aria-label="Saved visualization version" value={tag.spec ? tag.versionId ?? "current" : ""} disabled={disabled} onChange={event => void submit("restore", "", event.target.value)} className="h-8 min-w-0 flex-1 rounded border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-2">

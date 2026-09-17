@@ -32,6 +32,7 @@ export type DocMeta = {
   filename: string;
   uploadedAt: number;
   numPages: number;
+  sourceUrl?: string;
   /** Epoch ms — last time the doc was opened in the viewer. Null until
    *  the user first opens it. Updated via `touchDoc(id)` (called from
    *  POST /api/doc/[id]/touch). */
@@ -104,6 +105,7 @@ export function saveDoc(entry: StoreEntry): void {
     filename: entry.filename,
     uploadedAt: entry.uploadedAt,
     numPages: entry.numPages,
+    ...(entry.sourceUrl ? { sourceUrl: entry.sourceUrl } : {}),
   };
   const writeAtomic = (p: string, data: unknown) => {
     const tmp = `${path.dirname(p)}/${randomUUID()}.tmp`;
