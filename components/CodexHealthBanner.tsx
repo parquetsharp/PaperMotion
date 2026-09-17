@@ -118,6 +118,10 @@ export default function CodexHealthBanner() {
   const label = PROVIDER_LABELS[provider];
 
   const handleReconnect = useCallback(async () => {
+    if (provider === "copilot") {
+      window.open("https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/install-copilot-cli", "_blank", "noopener,noreferrer");
+      return;
+    }
     if (!window.getit?.runCodexSetup) {
       alert("Please open Settings to re-configure your provider.");
       return;
@@ -128,7 +132,7 @@ export default function CodexHealthBanner() {
     } finally {
       setReconnecting(false);
     }
-  }, []);
+  }, [provider]);
 
   const view = useMemo(() => {
     if (!health || health.ok) return null;
@@ -150,7 +154,9 @@ export default function CodexHealthBanner() {
         ? `${label} needs a sign-in`
         : `${label} is missing`;
     body =
-      view.kind === "auth_lost"
+      provider === "copilot"
+        ? view.message ?? "Run copilot login in your terminal, then retry."
+        : view.kind === "auth_lost"
         ? `Your ${label} session expired or signed out. Re-connect to keep working — your data is safe.`
         : `We can't find the ${label} binary. ${provider === "codex" ? "Open the setup wizard to install it." : "Install it or check your PATH."}`;
       action = (
@@ -165,7 +171,7 @@ export default function CodexHealthBanner() {
         ) : (
           <KeyRound className="h-3 w-3" />
         )}
-        {provider === "codex" ? "Re-connect" : "Configure in Settings"}
+        {provider === "copilot" ? "Setup Help" : provider === "codex" ? "Re-connect" : "Configure in Settings"}
       </button>
     );
   } else if (view.kind === "model_unsupported") {

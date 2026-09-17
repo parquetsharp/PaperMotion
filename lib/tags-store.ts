@@ -27,10 +27,16 @@ export type PersistedTagServer = {
   ready: boolean;
   generating: boolean;
   concept: DetectedConcept;
+  selection?: { text: string };
   spec?: VizSpec;
   error?: string;
   attempts?: number;
   lastRuntimeError?: string;
+  revision?: number;
+  feedback?: Array<{ id: string; message: string; reply: string; status: "applied" | "failed"; at: number }>;
+  versionId?: string;
+  versionAt?: number;
+  versions?: Array<{ id?: string; spec: VizSpec; at: number }>;
 };
 
 export type PersistedTagsFile = {
@@ -40,6 +46,7 @@ export type PersistedTagsFile = {
   tags: PersistedTagServer[];
   activeTagId: string | null;
   pagesAnalyzed: number[];
+  deletedTagIds?: string[];
 };
 
 const VERSION = 1 as const;
@@ -60,11 +67,16 @@ export function saveTags(
   payload: Omit<PersistedTagsFile, "v" | "docId" | "savedAt">,
 ): void {
   ensureDocDir(docId);
+  const deletedTagIds = [...new Set([...(loadTags(docId)?.deletedTagIds ?? []), ...(payload.deletedTagIds ?? [])])];
+  const deleted = new Set(deletedTagIds);
   const file: PersistedTagsFile = {
     v: VERSION,
     docId,
     savedAt: Date.now(),
     ...payload,
+    deletedTagIds,
+    tags: payload.tags.filter(tag => !deleted.has(tag.id)),
+    activeTagId: payload.activeTagId && !deleted.has(payload.activeTagId) ? payload.activeTagId : null,
   };
   const tmp = `${tagsPath(docId)}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(file, null, 2));

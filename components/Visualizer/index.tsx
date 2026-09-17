@@ -8,6 +8,7 @@ import TwoDAnimView from "./TwoDAnimView";
 import TwoDTextView from "./TwoDTextView";
 import FormulaView from "./FormulaView";
 import GraphView from "./GraphView";
+import InteractiveView from "./InteractiveView";
 import VizLegendIcon from "./VizLegendIcon";
 import { VIZ_LEGEND_ORDER, VIZ_TYPE_META, vizTypeStyle } from "./viz-meta";
 
@@ -106,6 +107,7 @@ export default function Visualizer({ spec, loading, emptyHint, loadingDetail, on
               transition={{ duration: 0.2 }}
               className="absolute inset-0"
             >
+              {spec.type === "interactive" && <InteractiveView key={JSON.stringify(spec)} spec={spec} />}
               {spec.type === "3d" && <ThreeDView spec={spec} onRuntimeError={onRuntimeError} />}
               {spec.type === "2d-anim" && <TwoDAnimView spec={spec} onRuntimeError={onRuntimeError} />}
               {spec.type === "2d-text" && <TwoDTextView spec={spec} />}

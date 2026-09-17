@@ -9,12 +9,16 @@ const eslintConfig = defineConfig([
   globalIgnores([
     // Default ignores of eslint-config-next:
     ".next/**",
+    ".next-preview/**",
+    "dist-release/**",
     "out/**",
     "build/**",
     "next-env.d.ts",
     "electron/*-bin/**",
     "electron/assets/**",
     "public/pdf.worker.min.mjs",
+    "extension/build/**",
+    "scripts/extension-out/**",
   ]),
   {
     files: ["electron/**/*.js", "**/*.cjs"],

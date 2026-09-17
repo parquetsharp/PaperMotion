@@ -1,0 +1,14 @@
+{
+  "rehype-katex@7.0.1": {
+    "file": "remark-math-MIT.txt",
+    "source": "https://github.com/remarkjs/remark-math/blob/main/license",
+    "evidence": "Installed readme.md License section links to this shared MIT license and credits Junyoung Choi.",
+    "retrieved": "2026-09-15"
+  },
+  "remark-math@6.0.0": {
+    "file": "remark-math-MIT.txt",
+    "source": "https://github.com/remarkjs/remark-math/blob/main/license",
+    "evidence": "Installed readme.md License section links to this shared MIT license and credits Junyoung Choi.",
+    "retrieved": "2026-09-15"
+  }
+}

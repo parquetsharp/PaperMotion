@@ -42,17 +42,16 @@ import {
   type PersistedTagsFile,
 } from "./tags-store";
 import type { DetectedConcept, VizType } from "./schemas";
+import { isVizEditing } from "./viz-edit-lock";
+import { normalizeConcurrency } from "./job-concurrency";
+import { registerJobWakeup } from "./job-wakeups";
+import { randomUUID } from "node:crypto";
+import { generatedVersion } from "./viz-versions";
 
-// Number of detection batches running concurrently. Each batch is one Codex
-// call covering up to DETECTION_BATCH_PAGES pages, so up to
-// CONCURRENCY * BATCH_PAGES pages are in flight at once — fast on long docs
-// without a burst big enough to trip the usage window.
-const DETECTION_CONCURRENCY = 3;
 const DETECTION_BATCH_PAGES = 5;
 /** Give up on a page after this many generic (non rate-limit) failures so a
  *  persistently bad page can never wedge the job in a retry loop. */
 const MAX_DETECTION_ATTEMPTS = 2;
-const VIZ_CONCURRENCY = 4;
 const MIN_PAGE_TEXT_LEN = 120;
 
 // ── small helpers ───────────────────────────────────────────────────────
@@ -140,6 +139,7 @@ async function runDetection(docId: string) {
     return batch;
   };
 
+  let releaseWakeup = () => {};
   await new Promise<void>((resolve) => {
     let active = 0;
     let done = false;
@@ -152,7 +152,9 @@ async function runDetection(docId: string) {
     };
 
     const pump = () => {
-      while (active < DETECTION_CONCURRENCY) {
+      if (done) return;
+      const concurrency = normalizeConcurrency(loadSettings().detectionConcurrency, "detectionConcurrency");
+      while (active < concurrency) {
         if (terminalCodexError) {
           finish();
           return;
@@ -197,8 +199,9 @@ async function runDetection(docId: string) {
       }
     };
 
+    releaseWakeup = registerJobWakeup("detectionConcurrency", pump);
     pump();
-  });
+  }).finally(() => releaseWakeup());
 
   // Surface the terminal error so ensureDetection logs it; the health mailbox
   // already carries it for the banner. We never schedule an auto-retry.
@@ -283,7 +286,7 @@ function appendDetectionResult(
 ) {
   let added = 0;
   mergeTagsFile(docId, (file) => {
-    const existingIds = new Set(file.tags.map((t) => t.id));
+    const existingIds = new Set([...file.tags.map((t) => t.id), ...(file.deletedTagIds ?? [])]);
     const fresh = newTags.filter((t) => !existingIds.has(t.id));
     added = fresh.length;
     const merged: PersistedTagsFile = {
@@ -345,6 +348,7 @@ export function requestVizGeneration(
   tagId: string,
   runtimeError?: string,
 ): void {
+  if (isVizEditing(docId, tagId)) return;
   const maxRetries = loadSettings().maxRetries;
   mergeTagsFile(docId, (file) => ({
     ...file,
@@ -382,7 +386,7 @@ export function requestRetryFailedViz(docId: string): number {
   mergeTagsFile(docId, (file) => ({
     ...file,
     tags: file.tags.map((t) => {
-      if (!t.error) return t;
+      if (!t.error || isVizEditing(docId, t.id)) return t;
       requeued++;
       return {
         ...t,
@@ -417,6 +421,7 @@ async function runVizQueue(docId: string) {
     return null;
   };
 
+  let releaseWakeup = () => {};
   await new Promise<void>((resolve) => {
     let active = 0;
     let done = false;
@@ -429,7 +434,9 @@ async function runVizQueue(docId: string) {
     };
 
     const pump = () => {
-      while (active < VIZ_CONCURRENCY) {
+      if (done) return;
+      const concurrency = normalizeConcurrency(loadSettings().vizConcurrency, "vizConcurrency");
+      while (active < concurrency) {
         if (stopError) {
           finish();
           return;
@@ -471,8 +478,9 @@ async function runVizQueue(docId: string) {
       }
     };
 
+    releaseWakeup = registerJobWakeup("vizConcurrency", pump);
     pump();
-  });
+  }).finally(() => releaseWakeup());
 
   // Account-level stop: clear the spinner from every tag still queued so the
   // viewer shows them as idle/click-to-retry instead of spinning forever.
@@ -495,12 +503,16 @@ async function processViz(docId: string, tagId: string, docTitle: string) {
       : undefined;
 
   try {
+    const sourcePage = getDoc(docId)?.extracted.pages.find(page => page.pageIndex === tag.page);
     const spec = await generateVizSpec({
       type: tag.type,
       label: tag.concept.label,
-      context: tag.concept.context,
+      context: tag.type === "2d-text" || tag.selection
+        ? `${tag.concept.context}\n\nSOURCE PAGE ${tag.page + 1}:\n${getDoc(docId)?.extracted.pages.find(page => page.pageIndex === tag.page)?.text ?? ""}`
+        : tag.concept.context,
       docTitle,
       previousAttempt,
+      evidenceSource: sourcePage ? { docId, pages: [sourcePage] } : undefined,
     });
     mergeTagsFile(docId, (f) => ({
       ...f,
@@ -508,7 +520,8 @@ async function processViz(docId: string, tagId: string, docTitle: string) {
         t.id === tagId
           ? {
               ...t,
-              spec,
+              ...generatedVersion(t, spec, randomUUID()),
+              revision: (t.revision ?? 0) + 1,
               ready: true,
               generating: false,
               attempts: (t.attempts ?? 0) + 1,

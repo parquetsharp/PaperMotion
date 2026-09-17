@@ -1,0 +1,21 @@
+{
+  "releaseVersion": "0.1.0",
+  "visibility": "Hidden",
+  "publisherName": null,
+  "supportContact": null,
+  "websiteUrl": null,
+  "privacyPolicyUrl": null,
+  "companionDownloadUrl": null,
+  "confirmations": {
+    "publisherAccountVerified": false,
+    "privacyPolicyApprovedAndPublished": false,
+    "companionInstallationTestedOnCleanMachine": false,
+    "edgeStoreIdPairingTested": false,
+    "reviewerAccessPrepared": false,
+    "dataTransferAndConsentReviewed": false,
+    "loopbackTransportReviewed": false,
+    "generatedCodeArchitectureReviewed": false,
+    "licensesAndBrandingReviewed": false,
+    "finalSubmissionApproved": false
+  }
+}

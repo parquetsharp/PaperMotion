@@ -25,16 +25,8 @@ import {
 } from "lucide-react";
 
 import type { ProviderName } from "@/lib/provider-types";
-
-type ProviderUsage = {
-  inputTokens: number;
-  outputTokens: number;
-  totalTokens: number;
-  costUsd: number;
-  calls: number;
-  since: number | null;
-  updatedAt: number | null;
-};
+import type { ProviderUsage } from "@/lib/usage-store";
+import CopilotUsageMetrics from "./CopilotUsageMetrics";
 
 type RateWindow = {
   usedPercent: number;
@@ -43,6 +35,7 @@ type RateWindow = {
 } | null;
 
 type ProviderStatus = {
+  statusMessage?: string;
   provider: ProviderName;
   label: string;
   docsUrl: string;
@@ -71,6 +64,13 @@ type ProviderStatus = {
 export default function AccountButton() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({ top: 0, right: 8, maxHeight: 600 });
+  const measure = useCallback(() => {
+    if (!ref.current) return;
+    const rect = ref.current.getBoundingClientRect();
+    const width = Math.min(22 * parseFloat(getComputedStyle(document.documentElement).fontSize), window.innerWidth - 32);
+    setPosition({ top: rect.bottom + 6, right: Math.min(window.innerWidth - width - 8, Math.max(8, window.innerWidth - rect.right)), maxHeight: Math.max(0, window.innerHeight - rect.bottom - 16) });
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -82,18 +82,20 @@ export default function AccountButton() {
     };
     window.addEventListener("mousedown", onClick);
     window.addEventListener("keydown", onKey);
+    window.addEventListener("resize", measure);
     return () => {
       window.removeEventListener("mousedown", onClick);
       window.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", measure);
     };
-  }, [open]);
+  }, [open, measure]);
 
   return (
     <div ref={ref} className="relative">
       <span className="viz-tooltip-anchor relative inline-flex">
         <button
           type="button"
-          onClick={() => setOpen((v) => !v)}
+          onClick={() => { measure(); setOpen((v) => !v); }}
           className="tab-icon-btn"
           aria-label="Account"
         >
@@ -113,7 +115,8 @@ export default function AccountButton() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
             transition={{ duration: 0.12 }}
-            className="absolute right-0 top-full z-30 mt-1.5 w-[22rem] overflow-hidden rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-raised)] shadow-[var(--shadow-popover)]"
+            style={position}
+            className="fixed z-30 w-[22rem] max-w-[calc(100vw-32px)] overflow-y-auto rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-raised)] shadow-[var(--shadow-popover)]"
           >
             <AccountPanel open={open} />
           </motion.div>
@@ -134,13 +137,16 @@ function AccountPanel({ open }: { open: boolean }) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const controller = new AbortController();
     setLoading(true);
     setErr(null);
-    fetch("/api/provider/status", { cache: "no-store" })
+    const refresh = () => fetch("/api/provider/status", { cache: "no-store", signal: controller.signal })
       .then(async (r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return (await r.json()) as ProviderStatus;
@@ -149,6 +155,7 @@ function AccountPanel({ open }: { open: boolean }) {
         if (!cancelled) {
           setData(d);
           setLoading(false);
+          setErr(null);
         }
       })
       .catch((e) => {
@@ -156,11 +163,15 @@ function AccountPanel({ open }: { open: boolean }) {
           setErr((e as Error).message);
           setLoading(false);
         }
-      });
+      })
+      .finally(() => { if (!cancelled) timer = setTimeout(refresh, 5000); });
+    void refresh();
     return () => {
       cancelled = true;
+      controller.abort();
+      clearTimeout(timer);
     };
-  }, [open]);
+  }, [open, refreshKey]);
 
   const handleSignOut = useCallback(async () => {
     if (busy || !data) return;
@@ -189,7 +200,8 @@ function AccountPanel({ open }: { open: boolean }) {
         <p className="text-[10.5px] font-semibold uppercase tracking-wider text-[var(--ink-500)]">
           {data?.label ?? "AI Provider"} account
         </p>
-        {data?.authenticated && (
+        <button type="button" aria-label="Refresh account usage" title="Refresh account usage" disabled={loading} onClick={() => setRefreshKey(value => value + 1)} className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-[var(--ink-500)] hover:bg-[var(--surface-sunken)] disabled:opacity-40"><RefreshCw className={`h-3.5 w-3.5${loading ? " animate-spin" : ""}`} /></button>
+        {data?.authenticated && data.provider !== "copilot" && (
           <button
             type="button"
             onClick={handleSignOut}
@@ -211,13 +223,15 @@ function AccountPanel({ open }: { open: boolean }) {
       )}
 
       {!loading && (err || !data) && (
-        <p className="mt-1.5 text-[11px] text-[var(--ink-400)]">No data.</p>
+        <p role="alert" className="mt-1.5 text-[11px] text-[var(--ink-400)]">Usage update unavailable. {data ? "Last reported totals are shown." : "Refresh to try again."}</p>
       )}
 
       {!loading && data && (
         <>
           {/* Identity */}
-          {data.authenticated && data.account ? (
+          {data.provider === "copilot" ? (
+            <p className="mt-2 text-[11.5px] text-[var(--ink-500)]">{data.statusMessage}</p>
+          ) : data.authenticated && data.account ? (
             <div className="mt-1.5 flex items-center gap-2">
               <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--surface-sunken)] text-[var(--ink-500)]">
                 <UserIcon className="h-3 w-3" />
@@ -260,7 +274,9 @@ function AccountPanel({ open }: { open: boolean }) {
               never a silent flip to tokens). Every other engine — Claude (no
               limit surface), Gemini, Pi, Codex-on-API-key — shows daily token
               usage instead. */}
-          {data.exposesLimits ? (
+          {data.provider === "copilot" && data.usage ? (
+            <CopilotUsageMetrics usage={data.usage} />
+          ) : data.exposesLimits ? (
             data.rateLimits && (data.rateLimits.primary || data.rateLimits.secondary) ? (
               <div className="mt-4 space-y-1.5">
                 <LimitRow label="5h limit" win={data.rateLimits.primary} />
@@ -273,13 +289,14 @@ function AccountPanel({ open }: { open: boolean }) {
             ) : null
           ) : data.authenticated && data.usage && data.usage.calls > 0 ? (
             <UsageRow usage={data.usage} showCost={data.authMode === "apiKey"} />
-          ) : data.authenticated ? (
+          ) : data.authenticated && data.provider !== "copilot" ? (
             <div className="mt-4 text-[10.5px] text-[var(--ink-400)]">
               No tokens used today yet.
             </div>
           ) : null}
 
           {/* Actions */}
+          {data.exposesLimits && data.usage && data.usage.calls > 0 && <UsageRow usage={data.usage} showCost={data.authMode === "apiKey"} />}
           <div className="mt-4 flex items-center gap-2">
             <a
               href={data.docsUrl}
@@ -290,14 +307,14 @@ function AccountPanel({ open }: { open: boolean }) {
               <ExternalLink className="h-2.5 w-2.5" />
               Help
             </a>
-            <button
+            {data.provider !== "copilot" && <button
               type="button"
               onClick={openSetup}
               className="inline-flex items-center gap-1 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-2 py-1 text-[10.5px] font-medium text-[var(--ink-700)] transition hover:border-[var(--accent-300)] hover:text-[var(--accent-700)]"
             >
               <Settings2 className="h-2.5 w-2.5" />
               {data.authenticated ? "Switch provider" : "Connect"}
-            </button>
+            </button>}
           </div>
         </>
       )}

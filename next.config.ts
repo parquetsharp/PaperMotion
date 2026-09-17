@@ -13,6 +13,17 @@ const pkg = createRequire(import.meta.url)("./package.json") as {
 };
 
 const nextConfig: NextConfig = {
+  distDir: process.env.GETIT_ISOLATED_BUILD === "1" ? ".next-preview" : ".next",
+  async headers() {
+    return [{
+      source: "/extension/pair",
+      headers: [
+        { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+        { key: "Referrer-Policy", value: "no-referrer" },
+        { key: "Cache-Control", value: "no-store" },
+      ],
+    }];
+  },
   turbopack: {
     root: path.resolve(__dirname),
   },

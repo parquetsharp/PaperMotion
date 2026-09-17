@@ -29,6 +29,7 @@ import { CodexProvider } from "./providers/codex-provider";
 import { GeminiProvider } from "./providers/gemini-provider";
 import { ClaudeProvider } from "./providers/claude-provider";
 import { PiProvider } from "./providers/pi-provider";
+import { CopilotProvider } from "./providers/copilot-provider";
 import { CodexError, classifyCodexError, toCodexErrorPayload as toErrorPayloadBase } from "./codex-errors";
 import type { CodexErrorKind } from "./codex-errors";
 import { recordUsage, normalizeUsage } from "./usage-store";
@@ -54,6 +55,10 @@ export {
 export function toCodexErrorPayload(err: unknown): { kind: CodexErrorKind; message: string } {
   let label = "the AI engine";
   try {
+    if (loadSettings().provider === "copilot") {
+      const error = err instanceof CodexError ? err : classifyCodexError(err);
+      return { kind: error.kind, message: error.message };
+    }
     label = PROVIDER_LABELS[loadSettings().provider] ?? label;
   } catch {
     /* fall back to the generic label */
@@ -68,6 +73,7 @@ const providers: Record<ProviderName, AIProvider> = {
   gemini: new GeminiProvider(),
   claude: new ClaudeProvider(),
   pi: new PiProvider(),
+  copilot: new CopilotProvider(),
 };
 
 function activeProvider(): AIProvider {
@@ -113,6 +119,7 @@ const healthMap: HealthMap = globalThis.__getitHealthState ?? (globalThis.__geti
   gemini: { ..._initialHealth },
   claude: { ..._initialHealth },
   pi: { ..._initialHealth },
+  copilot: { ..._initialHealth },
 });
 
 function getHealth(providerName?: ProviderName): CodexHealth {
@@ -222,7 +229,7 @@ export async function runJson<T>(
       signal: link.signal,
     });
     markOk(providerName);
-    recordUsage(providerName, normalizeUsage(providerName, result.usage));
+    if (providerName !== "copilot") recordUsage(providerName, normalizeUsage(providerName, result.usage));
     return result;
   } catch (err) {
     if (link.timedOut()) {
@@ -266,7 +273,7 @@ export async function runJsonInThread<T>(args: {
       opts: { ...(args.opts ?? {}), signal: link.signal },
     });
     markOk(providerName);
-    recordUsage(providerName, normalizeUsage(providerName, result.usage));
+    if (providerName !== "copilot") recordUsage(providerName, normalizeUsage(providerName, result.usage));
     return result;
   } catch (err) {
     if (link.timedOut()) {

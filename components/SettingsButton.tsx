@@ -16,14 +16,20 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Settings2, Pencil, Check, Sun, Moon, Monitor } from "lucide-react";
+import { Settings2, Pencil, Check, Sun, Moon, Monitor, RotateCcw, RefreshCw } from "lucide-react";
 import { AUTO_GENERATE_VIZ, MAX_VIZ_GEN_RETRIES } from "@/lib/config";
+import { CONCURRENCY_LIMITS, normalizeConcurrency, type ConcurrencyField } from "@/lib/job-concurrency";
 import { APP_VERSION } from "@/lib/version";
 import type { ProviderName } from "@/lib/provider-types";
+import type { CopilotModel } from "@/lib/providers/copilot-models";
 
 export type SettingsPayload = {
+  copilotModelFast?: string;
+  copilotModelSmart?: string;
   autoGenerate: boolean;
   maxRetries: number;
+  detectionConcurrency?: number;
+  vizConcurrency?: number;
   provider: ProviderName;
   codexModelFast?: string;
   codexModelSmart?: string;
@@ -52,6 +58,7 @@ export type SettingsPayload = {
 export const SETTINGS_EVENT = "getit:settings";
 
 const ENGINE_LABEL: Record<ProviderName, string> = {
+  copilot: "GitHub Copilot",
   codex: "OpenAI — Codex CLI",
   gemini: "Google — Gemini (API key)",
   claude: "Anthropic — Claude Code",
@@ -59,15 +66,17 @@ const ENGINE_LABEL: Record<ProviderName, string> = {
 };
 
 function EditableModelSelect({ 
+  id,
   label, 
   value, 
   onChange, 
   options 
 }: { 
+  id?: string;
   label: string; 
   value: string; 
   onChange: (v: string) => void; 
-  options: { value: string; label: string }[] 
+  options: { value: string; label: string; disabled?: boolean }[] 
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const isCustom = !options.some(o => o.value === value);
@@ -76,7 +85,7 @@ function EditableModelSelect({
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        <label className="block text-[11.5px] font-medium text-[var(--ink-900)]">
+        <label htmlFor={id} className="block text-[11.5px] font-medium text-[var(--ink-900)]">
           {label}
         </label>
         <button 
@@ -91,12 +100,14 @@ function EditableModelSelect({
           }}
           className="text-[var(--ink-500)] hover:text-[var(--ink-900)]"
           title={showEdit ? "Select from list" : "Enter custom model"}
+          aria-label={`${showEdit ? "Select from list" : "Enter custom model"}: ${label}`}
         >
           {showEdit ? <Check className="w-3 h-3" /> : <Pencil className="w-3 h-3" />}
         </button>
       </div>
       {showEdit ? (
         <input
+          id={id}
           type="text"
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -105,12 +116,13 @@ function EditableModelSelect({
         />
       ) : (
         <select
+          id={id}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           className="w-full rounded-md border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-2 py-1.5 text-[12px] font-medium text-[var(--ink-900)] focus:border-[var(--accent-500)] focus:outline-none"
         >
           {options.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
+            <option key={o.value} value={o.value} disabled={o.disabled}>{o.label}</option>
           ))}
         </select>
       )}
@@ -120,7 +132,18 @@ function EditableModelSelect({
 
 export default function SettingsButton() {
   const [open, setOpen] = useState(false);
+  const [menuMaxHeight, setMenuMaxHeight] = useState<number>();
+  const [menuRight, setMenuRight] = useState(0);
+  const [menuTop, setMenuTop] = useState(0);
   const ref = useRef<HTMLDivElement>(null);
+  const measureMenu = useCallback(() => {
+    if (!ref.current) return;
+    const trigger = ref.current.getBoundingClientRect();
+    setMenuMaxHeight(Math.max(0, window.innerHeight - trigger.bottom - 16));
+    const menuWidth = Math.min(22 * parseFloat(getComputedStyle(document.documentElement).fontSize), window.innerWidth - 64);
+    setMenuRight(Math.min(window.innerWidth - menuWidth - 8, Math.max(8, window.innerWidth - trigger.right)));
+    setMenuTop(trigger.bottom + 6);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -132,18 +155,23 @@ export default function SettingsButton() {
     };
     window.addEventListener("mousedown", onClick);
     window.addEventListener("keydown", onKey);
+    window.addEventListener("resize", measureMenu);
     return () => {
       window.removeEventListener("mousedown", onClick);
       window.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", measureMenu);
     };
-  }, [open]);
+  }, [open, measureMenu]);
 
   return (
     <div ref={ref} className="relative">
       <span className="viz-tooltip-anchor relative inline-flex">
         <button
           type="button"
-          onClick={() => setOpen((v) => !v)}
+          onClick={() => {
+            measureMenu();
+            setOpen((v) => !v);
+          }}
           className="tab-icon-btn"
           aria-label="Settings"
         >
@@ -163,7 +191,8 @@ export default function SettingsButton() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
             transition={{ duration: 0.12 }}
-            className="absolute right-0 top-full z-30 mt-1.5 w-[22rem] overflow-hidden rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-raised)] shadow-[var(--shadow-popover)]"
+            style={{ maxHeight: menuMaxHeight, right: menuRight, top: menuTop }}
+            className="fixed z-30 max-h-[calc(100dvh-80px)] w-[22rem] max-w-[calc(100vw-64px)] overflow-y-auto rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-raised)] shadow-[var(--shadow-popover)]"
           >
             <SettingsPanel refreshKey={open ? "open" : "closed"} />
           </motion.div>
@@ -175,8 +204,20 @@ export default function SettingsButton() {
 
 function SettingsPanel({ refreshKey }: { refreshKey: string }) {
   const [provider, setProvider] = useState<ProviderName>("codex");
+  const [copilotModels, setCopilotModels] = useState({ copilotModelFast: "auto", copilotModelSmart: "auto" });
+  const [modelCatalog, setModelCatalog] = useState<{ models: CopilotModel[]; loading: boolean; error: string | null }>({ models: [], loading: true, error: null });
+  const [modelRefresh, setModelRefresh] = useState(0);
+  const copilotOptions = [
+    { value: "auto", label: "Auto (Copilot chooses)", disabled: modelCatalog.models.find(model => model.id === "auto")?.enabled === false },
+    ...modelCatalog.models.filter(model => model.id !== "auto").map(model => ({ value: model.id, label: model.enabled ? model.name : `${model.name} (Unavailable)`, disabled: !model.enabled })),
+  ];
   const [autoGenerate, setAutoGenerate] = useState<boolean>(AUTO_GENERATE_VIZ);
   const [maxRetries, setMaxRetries] = useState<number>(MAX_VIZ_GEN_RETRIES);
+  const [concurrency, setConcurrency] = useState<Record<ConcurrencyField, number | "">>({
+    detectionConcurrency: CONCURRENCY_LIMITS.detectionConcurrency.default,
+    vizConcurrency: CONCURRENCY_LIMITS.vizConcurrency.default,
+  });
+  const savedConcurrency = useRef(concurrency);
 
   // Managed specific
   const [codexModelFast, setCodexModelFast] = useState<string>("gpt-5.5");
@@ -206,6 +247,22 @@ function SettingsPanel({ refreshKey }: { refreshKey: string }) {
   const [osPrefersDark, setOsPrefersDark] = useState(false);
 
   useEffect(() => {
+    if (provider !== "copilot" || refreshKey !== "open") return;
+    const controller = new AbortController();
+    fetch("/api/provider/models", { cache: "no-store", signal: controller.signal })
+      .then(async response => {
+        const body = await response.json();
+        if (!response.ok) throw new Error(typeof body.error === "string" ? body.error : "Copilot model discovery failed.");
+        if (!Array.isArray(body.models) || !body.models.every((model: CopilotModel) => model && typeof model.id === "string" && typeof model.name === "string" && typeof model.enabled === "boolean")) throw new Error("Copilot returned an invalid model list.");
+        if (!controller.signal.aborted) setModelCatalog({ models: body.models, loading: false, error: null });
+      })
+      .catch(error => {
+        if (!controller.signal.aborted) setModelCatalog({ models: [], loading: false, error: error instanceof Error ? error.message : "Copilot model discovery failed." });
+      });
+    return () => controller.abort();
+  }, [provider, refreshKey, modelRefresh]);
+
+  useEffect(() => {
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     setOsPrefersDark(mq.matches);
     const onChange = () => setOsPrefersDark(mq.matches);
@@ -229,7 +286,14 @@ function SettingsPanel({ refreshKey }: { refreshKey: string }) {
         setKeyStatus(s);
         if (typeof s.autoGenerate === "boolean") setAutoGenerate(s.autoGenerate);
         if (typeof s.maxRetries === "number") setMaxRetries(s.maxRetries);
+        const limits = {
+          detectionConcurrency: normalizeConcurrency(s.detectionConcurrency, "detectionConcurrency"),
+          vizConcurrency: normalizeConcurrency(s.vizConcurrency, "vizConcurrency"),
+        };
+        savedConcurrency.current = limits;
+        setConcurrency(limits);
         if (s.provider) setProvider(s.provider);
+        setCopilotModels({ copilotModelFast: s.copilotModelFast ?? "auto", copilotModelSmart: s.copilotModelSmart ?? "auto" });
         if (typeof s.codexModelFast === "string") setCodexModelFast(s.codexModelFast);
         if (typeof s.codexModelSmart === "string") setCodexModelSmart(s.codexModelSmart);
         if (typeof s.codexEffortFast === "string") setCodexEffortFast(s.codexEffortFast);
@@ -299,6 +363,18 @@ function SettingsPanel({ refreshKey }: { refreshKey: string }) {
     persist({ maxRetries: clamped });
   }, [persist]);
 
+  const onConcurrency = (field: ConcurrencyField, input: string) => {
+    if (!hydratedRef.current) return;
+    if (input === "") {
+      setConcurrency(previous => ({ ...previous, [field]: "" }));
+      return;
+    }
+    const value = normalizeConcurrency(Number(input), field);
+    savedConcurrency.current = { ...savedConcurrency.current, [field]: value };
+    setConcurrency(previous => ({ ...previous, [field]: value }));
+    persist({ [field]: value });
+  };
+
   const handlePiProviderChange = useCallback((newProvider: "ollama" | "gemini" | "openai" | "anthropic" | "custom") => {
     setPiProvider(newProvider);
     let url = "";
@@ -351,18 +427,18 @@ function SettingsPanel({ refreshKey }: { refreshKey: string }) {
     });
   }, [piUrl, piApiType, piModelFast, piModelSmart, persist]);
 
-  const textStateRef = useRef({ piUrl, piApiKey, piModelFast, piModelSmart, codexModelFast, codexModelSmart, codexEffortFast, codexEffortSmart, geminiApiKey, geminiModelFast, geminiModelSmart, claudeModelFast, claudeModelSmart, claudeEffortFast, claudeEffortSmart });
+  const textStateRef = useRef({ ...copilotModels, piUrl, piApiKey, piModelFast, piModelSmart, codexModelFast, codexModelSmart, codexEffortFast, codexEffortSmart, geminiApiKey, geminiModelFast, geminiModelSmart, claudeModelFast, claudeModelSmart, claudeEffortFast, claudeEffortSmart });
   useEffect(() => {
-    textStateRef.current = { piUrl, piApiKey, piModelFast, piModelSmart, codexModelFast, codexModelSmart, codexEffortFast, codexEffortSmart, geminiApiKey, geminiModelFast, geminiModelSmart, claudeModelFast, claudeModelSmart, claudeEffortFast, claudeEffortSmart };
-  }, [piUrl, piApiKey, piModelFast, piModelSmart, codexModelFast, codexModelSmart, codexEffortFast, codexEffortSmart, geminiApiKey, geminiModelFast, geminiModelSmart, claudeModelFast, claudeModelSmart, claudeEffortFast, claudeEffortSmart]);
+    textStateRef.current = { ...copilotModels, piUrl, piApiKey, piModelFast, piModelSmart, codexModelFast, codexModelSmart, codexEffortFast, codexEffortSmart, geminiApiKey, geminiModelFast, geminiModelSmart, claudeModelFast, claudeModelSmart, claudeEffortFast, claudeEffortSmart };
+  }, [copilotModels, piUrl, piApiKey, piModelFast, piModelSmart, codexModelFast, codexModelSmart, codexEffortFast, codexEffortSmart, geminiApiKey, geminiModelFast, geminiModelSmart, claudeModelFast, claudeModelSmart, claudeEffortFast, claudeEffortSmart]);
 
   useEffect(() => {
     if (!hydratedRef.current) return;
     const timer = setTimeout(() => {
-      persist({ piUrl, piApiKey, piModelFast, piModelSmart, codexModelFast, codexModelSmart, codexEffortFast, codexEffortSmart, geminiApiKey, geminiModelFast, geminiModelSmart, claudeModelFast, claudeModelSmart, claudeEffortFast, claudeEffortSmart });
+      persist({ ...copilotModels, piUrl, piApiKey, piModelFast, piModelSmart, codexModelFast, codexModelSmart, codexEffortFast, codexEffortSmart, geminiApiKey, geminiModelFast, geminiModelSmart, claudeModelFast, claudeModelSmart, claudeEffortFast, claudeEffortSmart });
     }, 500);
     return () => clearTimeout(timer);
-  }, [piUrl, piApiKey, piModelFast, piModelSmart, codexModelFast, codexModelSmart, codexEffortFast, codexEffortSmart, geminiApiKey, geminiModelFast, geminiModelSmart, claudeModelFast, claudeModelSmart, claudeEffortFast, claudeEffortSmart, persist]);
+  }, [copilotModels, piUrl, piApiKey, piModelFast, piModelSmart, codexModelFast, codexModelSmart, codexEffortFast, codexEffortSmart, geminiApiKey, geminiModelFast, geminiModelSmart, claudeModelFast, claudeModelSmart, claudeEffortFast, claudeEffortSmart, persist]);
 
   useEffect(() => {
     return () => {
@@ -418,23 +494,49 @@ function SettingsPanel({ refreshKey }: { refreshKey: string }) {
       </div>
 
       <div className="px-3 py-2 border-b border-[var(--border-subtle)]">
-        <label className="block text-[12.5px] font-medium text-[var(--ink-900)] mb-2">Model Engine</label>
-        {/* Switching engines goes through the setup wizard only — it installs/
-            authenticates the new backend and verifies it works before applying.
-            A free-floating dropdown here would bypass that and leave a broken
-            provider selected, so we show the current engine + a guided Switch. */}
-        <div className="flex items-center justify-between gap-2 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-2.5 py-1.5">
-          <span className="text-[12px] font-medium text-[var(--ink-900)]">{ENGINE_LABEL[provider]}</span>
-          <button
-            type="button"
-            onClick={() => window.getit?.runCodexSetup?.().catch(() => {})}
-            className="inline-flex items-center gap-1 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-2 py-1 text-[10.5px] font-medium text-[var(--ink-700)] transition hover:border-[var(--accent-300)] hover:text-[var(--accent-700)]"
-          >
-            <Settings2 className="h-2.5 w-2.5" />
-            Switch
-          </button>
-        </div>
+        <label htmlFor="model-engine" className="block text-[12.5px] font-medium text-[var(--ink-900)] mb-2">Model Engine</label>
+        <select id="model-engine" value={provider} onChange={event => {
+          const next = event.target.value as ProviderName;
+          setProvider(next);
+          if (next === "copilot") setModelCatalog({ models: [], loading: true, error: null });
+          persist({ provider: next });
+        }} className="w-full rounded-md border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-2.5 py-1.5 text-[12px] text-[var(--ink-900)]">
+          {Object.entries(ENGINE_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </select>
       </div>
+
+      {provider === "copilot" && (
+        <div className="space-y-3 border-b border-[var(--border-subtle)] bg-[var(--surface-sunken)] px-3 py-2.5">
+          <p className="text-[11.5px] text-[var(--ink-500)]">CLI authentication: <code>copilot login</code></p>
+          <div className="flex items-center justify-between gap-2">
+            <p role="status" className="text-[11.5px] text-[var(--ink-500)]">{modelCatalog.loading ? "Loading account models..." : modelCatalog.error ? "Model list unavailable" : modelCatalog.models.length ? `${modelCatalog.models.filter(model => model.enabled).length} account models` : "No account models returned"}</p>
+            <button
+              type="button"
+              aria-label="Refresh Copilot models"
+              title="Refresh account models"
+              disabled={modelCatalog.loading}
+              onClick={() => {
+                setModelCatalog({ models: [], loading: true, error: null });
+                setModelRefresh(previous => previous + 1);
+              }}
+              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-[var(--ink-500)] hover:bg-[var(--surface-raised)] disabled:opacity-50"
+            ><RefreshCw className={`h-3.5 w-3.5${modelCatalog.loading ? " animate-spin" : ""}`} /></button>
+          </div>
+          {modelCatalog.error && <p role="alert" className="break-words text-[11.5px] text-[var(--ink-700)]">{modelCatalog.error}</p>}
+          {(["copilotModelFast", "copilotModelSmart"] as const).map((field, index) => (
+            <EditableModelSelect
+              key={field}
+              id={field}
+              label={index === 0 ? "Generation model" : "Conversation model"}
+              value={copilotModels[field]}
+              onChange={value => setCopilotModels(previous => ({ ...previous, [field]: value }))}
+              options={copilotOptions}
+            />
+          ))}
+          <a href="https://docs.github.com/en/copilot/reference/cli-command-reference#supported-models" target="_blank" rel="noopener noreferrer" title="Models are retrieved using your local Copilot CLI sign-in. Availability can change with your account, organization policy, and CLI version." className="block text-[11.5px] text-[var(--accent-700)]">Copilot model availability</a>
+          <a href="https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/install-copilot-cli" target="_blank" rel="noopener noreferrer" className="text-[11.5px] text-[var(--accent-700)]">Copilot CLI setup and account requirements</a>
+        </div>
+      )}
 
       {provider === "gemini" && (
         <div className="px-3 py-2.5 border-b border-[var(--border-subtle)] bg-[var(--surface-sunken)] space-y-3">
@@ -783,11 +885,53 @@ function SettingsPanel({ refreshKey }: { refreshKey: string }) {
           </p>
           <p className="text-[11px] leading-relaxed text-[var(--ink-500)]">
             {autoGenerate
-              ? "Every detected tag fires its viz generation in parallel."
+              ? "Detected tags join the visualization queue automatically."
               : "Tags appear after detection but only render on click."}
           </p>
         </div>
       </div>
+
+      <section aria-label="Parallel requests" className="space-y-2.5 border-t border-[var(--border-subtle)] px-3 py-2.5">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[12.5px] font-medium text-[var(--ink-900)]">Parallel requests <span className="text-[11px] font-normal text-[var(--ink-500)]">per document</span></p>
+          <button
+            type="button"
+            aria-label="Reset parallelism to defaults"
+            title="Reset parallelism to defaults"
+            onClick={() => {
+              if (!hydratedRef.current) return;
+              const defaults = { detectionConcurrency: CONCURRENCY_LIMITS.detectionConcurrency.default, vizConcurrency: CONCURRENCY_LIMITS.vizConcurrency.default };
+              savedConcurrency.current = defaults;
+              setConcurrency(defaults);
+              persist(defaults);
+            }}
+            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-[var(--ink-500)] hover:bg-[var(--surface-sunken)] hover:text-[var(--ink-900)]"
+          ><RotateCcw className="h-3.5 w-3.5" /></button>
+        </div>
+        {([
+          { field: "detectionConcurrency", label: "Detection batches", description: "Up to 5 pages per batch. Raising the limit immediately fills available slots in active queues. Running requests are not cancelled." },
+          { field: "vizConcurrency", label: "Visualizations", description: "Raising the limit immediately fills available slots in active visualization queues. Does not limit chat, graph builds, or manual revisions. Running requests are not cancelled." },
+        ] as const).map(({ field, label, description }) => (
+          <div key={field} className="flex items-center justify-between gap-2">
+            <label htmlFor={field} title={description} className="min-w-0 text-[12px] text-[var(--ink-900)]">{label}</label>
+            <input
+              id={field}
+              type="number"
+              min={1}
+              max={CONCURRENCY_LIMITS[field].max}
+              step={1}
+              title={`${description} Range: 1-${CONCURRENCY_LIMITS[field].max}; default: ${CONCURRENCY_LIMITS[field].default}.`}
+              value={concurrency[field]}
+              onChange={event => onConcurrency(field, event.target.value)}
+              onBlur={() => {
+                if (concurrency[field] === "") setConcurrency(previous => ({ ...previous, [field]: savedConcurrency.current[field] }));
+              }}
+              className="h-7 w-16 shrink-0 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-2 text-right text-[12.5px] font-medium tabular-nums text-[var(--ink-900)] focus:border-[var(--accent-500)] focus:outline-none"
+            />
+          </div>
+        ))}
+        <p className="text-[11px] leading-relaxed text-[var(--ink-500)]">Higher values may hit provider rate limits and increase memory use.</p>
+      </section>
 
       {/* Max retries number input */}
       <div className="flex items-start gap-2.5 border-t border-[var(--border-subtle)] px-3 py-2.5">

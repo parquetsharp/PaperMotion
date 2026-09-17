@@ -20,6 +20,8 @@ import {
 } from "@/lib/codex-account";
 import { whichBinary, augmentedPath, resolveBundledBinary } from "@/lib/providers/cli-runner";
 import { readUsage, type ProviderUsage } from "@/lib/usage-store";
+import { resolveCopilotBinary } from "@/lib/providers/copilot-cli";
+import { getCodexHealth } from "@/lib/codex";
 
 export const runtime = "nodejs";
 
@@ -41,6 +43,7 @@ type ProviderStatus = {
   rateLimits: CodexRateLimits | null;
   /** Per-day token usage (the panel shows it for every non-limit engine). */
   usage: ProviderUsage | null;
+  statusMessage?: string;
 };
 
 /**
@@ -113,6 +116,22 @@ export async function GET() {
   const docsUrl = PROVIDER_DOCS[provider];
 
   const usage = readUsage(provider);
+
+  if (provider === "copilot") {
+    const installed = !!resolveCopilotBinary();
+    const health = getCodexHealth();
+    const authenticated = installed && health.ok && health.lastOkAt !== null;
+    const status: ProviderStatus = {
+      provider, label, docsUrl, installed, authenticated,
+      version: null, authMode: "account", exposesLimits: false,
+      account: null, rateLimits: null, usage,
+      statusMessage: !installed ? "Copilot CLI not found. Install it through your approved software source."
+        : health.kind === "auth_lost" ? "Sign-in required: run copilot login in your terminal, then retry."
+        : authenticated ? "Connected on the last study request."
+        : health.message ?? "CLI installed. Sign in with copilot login; authentication is verified on your next study request.",
+    };
+    return NextResponse.json(status, { headers: { "Cache-Control": "no-store" } });
+  }
 
   if (provider === "codex") {
     const account: CodexAccountInfo | null = (() => {

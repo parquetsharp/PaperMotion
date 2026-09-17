@@ -25,7 +25,7 @@ export async function POST(req: Request) {
     docTitle?: string;
     previousAttempt?: { spec: VizSpec; runtimeError: string };
   };
-  if (!body.type || !VIZ_TYPES.includes(body.type)) {
+  if (!body.type || (body.type !== "interactive" && !VIZ_TYPES.includes(body.type))) {
     return NextResponse.json({ error: "invalid type" }, { status: 400 });
   }
   if (!body.label || !body.context) {
